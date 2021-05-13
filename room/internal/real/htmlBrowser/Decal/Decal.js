@@ -17,8 +17,11 @@ global.rooms['internal.real.htmlBrowser.Decal'] = async foundation => {
         } else if (k === 'textColour') {
           domNode.style.color = d;
         } else if (k === 'border') {
-          let { ext, colour } = d;
-          domNode.style.boxShadow = `inset 0 0 0 ${ext} ${colour}`;
+          domNode.style.animation = 'none';
+          if (d) {
+            let { ext, colour } = d;
+            domNode.style.boxShadow = `inset 0 0 0 ${ext} ${colour}`;
+          }
         } else if (k === 'texture') {
           domNode.style.cursor = ({ smooth: '', bumpy: 'pointer' })[d];
         } else {

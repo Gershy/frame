@@ -387,6 +387,7 @@ global.rooms.hinterlands = async foundation => {
     hear: async function(srcHut, road, reply, msg, ms=foundation.getMs()) {
       
       if (!reply) throw Error(`Missing "reply"`);
+      if (msg === null) throw Error(`Got null "msg"`);
       
       /// {ABOVE=
       if (srcHut && srcHut.isAfar()) srcHut.refreshDryTimeout();
@@ -451,8 +452,7 @@ global.rooms.hinterlands = async foundation => {
       if (this.isAfar()) {
         
         // Clients follow any Recs they create
-        let rec = this.parHut.createRec(...args);
-        return (this.followRec(rec), rec);
+        return this.followRec(this.parHut.createRec(...args)).rec;
         
       } else {
         
@@ -812,7 +812,9 @@ global.rooms.hinterlands = async foundation => {
       //    |     
       // This style successfully captures the reason behind the action,
       // and makes the action generically accessible via "pfx.action".
-      tmp.act = msg => Hut.tell(srcHut, trgHut, null, null, { ...msg, command });
+      tmp.act = msg => {
+        Hut.tell(srcHut, trgHut, null, null, { ...msg, command });
+      };
       
       // Route any sends from a RoadSrc so that they call `fn`. Note
       // that `U.safe` allows either a value or an Error to be returned
@@ -825,12 +827,12 @@ global.rooms.hinterlands = async foundation => {
       tmp.endWith(hearSrc.route(({ msg, reply }) => {
         let result = U.safe(() => fn(msg));
         
-        if (U.hasForm(result, Error)) foundation.queueTask(() => { throw result; });
+        // if (U.hasForm(result, Error)) foundation.queueTask(() => { throw result; });
         
         /// {DEBUG= // TODO: this is DEBUG inside ABOVE; nesting not supported yet
         if (result != null && !U.isForm(result, Object, Array, String))
           if (![ U.setup.Keep, Error ].find(Form => U.hasForm(result, Form)).found)
-            throw Error(`Action for "${command}" returned invalid type ${U.getFormName(result)}`);
+            throw Error(`Action for "${command}" returned invalid type ${U.getFormName(result)} (need to return response data)`);
         /// =DEBUG}
         
         reply(result);

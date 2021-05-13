@@ -32,16 +32,13 @@ global.rooms['internal.real.htmlBrowser.Scroll'] = async foundation => {
       
     },
     
-    
     $Item: U.form({ name: 'Scroll.Item', has: { Layout }, props: (forms, Form) => ({
       init: function(par, ...params) {
         this.par = par;
       },
       render: function(real) {
-        
         let { x, y } = this.par;
         if (x !== 'none' || y !== 'none') real.domNode.style.scrollBehavior = 'smooth';
-        
       }
     })})
     

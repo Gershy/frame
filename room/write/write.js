@@ -210,7 +210,7 @@ global.rooms.write = async foundation => {
         
         let loggedOutReal = dep(real.addReal('wrt.loggedOut', [
           lay.Free({ w: '100%', h: '100%' }),
-          lay.Axis1D({ axis: 'y', flow: '+', cuts: 'focus' }),
+          lay.Axis1D({ axis: 'y', flow: '+', mode: 'compactCenter' }),
           lay.Decal({ colour: 'rgba(230, 230, 230, 1)' })
         ]));
         
@@ -267,13 +267,13 @@ global.rooms.write = async foundation => {
         
         let loggedInReal = dep(real.addReal('wrt.loggedIn', [
           lay.Free({ w: '100%', h: '100%' }),
-          lay.Axis1D({ axis: 'y', flow: '+', cuts: null }),
+          lay.Axis1D({ axis: 'y', flow: '+' }),
           lay.Decal({ colour: 'rgba(242, 242, 242, 1)' })
         ]));
         
         let headerReal = loggedInReal.addReal('wrt.loggedInHeader', [
           lay.Size({ w: '100%', h: '100px' }),
-          lay.Axis1D({ axis: 'x', flow: '+', cuts: 'distribute' }),
+          lay.Axis1D({ axis: 'x', flow: '+', mode: 'stretch' }),
           lay.Decal({ colour: 'rgba(230, 230, 230, 1)' })
         ]);
         headerReal.addReal('wrt.loggedInHeaderIcon', { text: 'RYTE' }, [
@@ -313,7 +313,7 @@ global.rooms.write = async foundation => {
             lay.Decal({ border: { ext: '2px', colour: 'rgba(0, 0, 150, 0.3)' } })
           ]));
           let roomsReal = dep(roomsScrollReal.addReal('wrt.rooms', [
-            lay.Axis1D({ axis: 'y', flow: '+', cuts: 'focus' })
+            lay.Axis1D({ axis: 'y', flow: '+', mode: 'compactCenter' })
           ]));
           
           // Being outside a room means we're able to create a room
@@ -348,7 +348,7 @@ global.rooms.write = async foundation => {
             
             let createRoomReal = dep(real.addReal('wrt.createRoom', [
               lay.Free({ w: '100%', h: '100%' }),
-              lay.Axis1D({ axis: 'y', flow: '+', cuts: 'focus' }),
+              lay.Axis1D({ axis: 'y', flow: '+', mode: 'compactCenter' }),
               lay.Decal({ colour: 'rgba(0, 0, 0, 0.5)' })
             ]));
             let contentReal = createRoomReal.addReal('wrt.createRoomContent', [
@@ -361,7 +361,7 @@ global.rooms.write = async foundation => {
             ]);
             let headerReal = contentReal.addReal('wrt.createRoomContentHeader', [
               lay.Size({ w: '100%', h: '60px' }),
-              lay.Axis1D({ axis: 'x', flow: '+', cuts: 'distribute' })
+              lay.Axis1D({ axis: 'x', flow: '+', mode: 'stretch' })
             ]);
             headerReal.addReal('wrt.createRoomContentHeaderLeft', []);
             headerReal.addReal('wrt.createRoomTitle', { text: 'Create Room' }, [
@@ -461,7 +461,7 @@ global.rooms.write = async foundation => {
           
           let headerReal = roomReal.addReal('wrt.activeRoomHeader', [
             lay.Size({ w: '100%', h: '60px' }),
-            lay.Axis1D({ axis: 'x', dir: '+', cuts: 'distribute' })
+            lay.Axis1D({ axis: 'x', dir: '+', mode: 'stretch' })
           ]);
           
           headerReal.addReal('wrt.activeRoomHeaderPad', [ lay.Size({ w: '30%' }) ]);
@@ -483,7 +483,7 @@ global.rooms.write = async foundation => {
           // Show fellow users in room, and indicate which are online
           let usersReal = roomReal.addReal('wrt.activeRoomUsers', [
             lay.Size({ h: '40px' }),
-            lay.Axis1D({ axis: 'x', flow: '+', cuts: 'focus' })
+            lay.Axis1D({ axis: 'x', flow: '+', mode: 'compactCenter' })
           ]);
           dep.scp(room, 'wrt.roomUser', (fellowRoomUser, dep) => {
             

@@ -2,50 +2,74 @@ global.rooms['internal.real.htmlBrowser.Axis1D'] = async foundation => {
   
   let Layout = await foundation.getRoom('internal.real.generic.Layout');
   return U.form({ name: 'Axis1D', has: { Layout }, props: (forms, Form) => ({
-    init: function({ axis='y', flow='+', cuts=null }) {
-      Object.assign(this, { axis, flow, cuts });
+    
+    $modes: 'stackFwd,stackBwd,stretch,compactCenter,disperseFully,dispersePadHalf,dispersePadFull'.cut(','),
+    
+    init: function({ axis='y', flow='+', mode='stack', overflowAction='none' }) {
+      if (mode === 'stack') mode = 'stackFwd';
+      if (!U.isForm(mode, Array) && !Form.modes.has(mode)) throw Error(`Invalid mode: ${mode}`);
+      Object.assign(this, { axis, flow, mode, overflowAction });
     },
     isInnerLayout: function() { return true; },
     getChildLayout: function() { return Form.Item(this); },
     render: function(real, domNode) {
       
-      if (![ 'relative', 'absolute' ].has(domNode.style.position)) domNode.style.position = 'relative';
+      // TODO: I took this off thinking of `* { position: relative; }`
+      // so unless some other layout sets a non-relative/absolute
+      // position we should always be guaranteed at least relative
+      //if (![ 'relative', 'absolute' ].has(domNode.style.position)) domNode.style.position = 'relative';
       
-      if ([ null, 'focus', 'distribute' ].includes(this.cuts)) {
+      if (U.isForm(this.mode, String)) {
         
         domNode.style.display = 'flex';
         domNode.style.flexDirection = (this.axis === 'x')
           ? (this.flow === '+' ? 'row' : 'row-reverse')
           : (this.flow === '+' ? 'column' : 'column-reverse');
-        domNode.style.alignItems = 'center'; // 'flex-start', 'center', 'flex-end'
+        
+        // Controls tangent alignment; consider an Axis1D with dir: 'y'
+        // and with children of varying widths; if they should be
+        // horizontally centered we're all set, but if they should be
+        // aligned left/right (so that wide ones jut out far to the side
+        // past their siblings) we'll need additional properties to
+        // define this behaviour
+        domNode.style.alignItems = 'center';
         
         domNode.style.justifyContent = {
-          stack: 'auto',
-          focus: 'center',
-          distribute: 'auto'
-        }[this.cuts || 'stack']; // null -> 'stack'
+          stackFwd: 'start',
+          stackBwd: 'end',
+          stretch: 'stretch',
+          compactCenter: 'center',
+          disperseFully: 'space-between',
+          dispersePadHalf: 'space-around',
+          dispersePadFull: 'space-evenly',
+        }[this.mode];
         
-      } else if (U.isForm(this, Array)) {
+      } else if (U.isForm(this.mode, Array)) {
         
         // Children are sized using the specified "cuts"
         let values = [];
         
       }
       
+      if (this.overflowAction === 'none') {
+        domNode.style.overflow = 'hidden';
+      } else {
+        domNode.style.overflow = (this.axis === 'x') ? 'scroll hidden' : 'hidden scroll';
+      }
+      
     },
     
     $Item: U.form({ name: 'Axis1D.Item', has: { Layout }, props: (forms, Form) => ({
       init: function(par) {
-        forms.Layout.init.call(this);
         this.par = par;
       },
       render: function(real, domNode) {
         
-        if (this.par.cuts === null) {
+        if (this.par.mode === null) {
           
           // Children determine their own size in the axis direction, and have 100% perp direction
           
-        } else if (this.par.cuts === 'distribute') {
+        } else if (this.par.mode === 'distribute') {
           
           // Children are all the same size
           domNode.style.flexGrow = '1';
@@ -53,16 +77,18 @@ global.rooms['internal.real.htmlBrowser.Axis1D'] = async foundation => {
           domNode.style.flexBasis = '0';
           domNode.style[this.par.axis === 'x' ? 'height' : 'width'] = '100%';
           
-        } else if (U.isForm(this.par.cuts, Array)) {
+        } else if (U.isForm(this.par.mode, Array)) {
+          
+          let cuts = this.par.mode;
           
           // Children are sized using the specified "cuts"
           let cutInd = this.params[0]; // TODO: Cut index should be found at something like `real.params.cutIndex`
-          let offCuts = this.par.cuts.slice(0, cutInd);
+          let offCuts = cuts.slice(0, cutInd);
           
           let off = offCuts.length ? `calc(${offCuts.join(' + ')})` : '0';
-          let ext = (cutInd <= (this.par.cuts.length - 1))
-            ? this.par.cuts[cutInd]
-            : `calc(100% - ${this.par.cuts.join(' - ')})`;
+          let ext = (cutInd <= (cuts.count() - 1))
+            ? cuts[cutInd]
+            : `calc(100% - ${cuts.join(' - ')})`;
           
           domNode.style.position = 'absolute';
           

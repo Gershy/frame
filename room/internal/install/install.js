@@ -48,7 +48,7 @@ global.rooms['internal.install'] = async foundation => {
       
       let stlReal = dep(real.addReal('stl.install', [
         lay.Free({ w: '100%', h: '92%', x: '0', y: '-4%' }),
-        lay.Axis1D({ axis: 'y', dir: '+', cuts: 'focus' })
+        lay.Axis1D({ axis: 'y', dir: '+', mode: 'compactCenter' })
       ]));
       
       stlReal.addReal('stl.title', { text: 'Hut Installation' },                  [ lay.Text({ gap: '4px', size: 'calc(120% + 1.8vw)' }) ]);

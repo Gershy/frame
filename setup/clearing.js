@@ -22,6 +22,9 @@ let protoDef = (Cls, name, value) => {
   // name remains undisclosed) into a ridiculous debugging scenario
   if (Cls === global.constructor) global[name] = C.skip;
 };
+let propDef = (inst, name, value, modifiers={}) => {
+  Object.defineProperty(inst, name, { value, writable: true, configurable: true, enumerable: true, ...modifiers });
+};
 
 protoDef(Object, 'each', function(fn) { for (let [ k, v ] of this) fn(v, k); });
 protoDef(Object, 'map', function(fn) { // Iterator: (val, key) => val
@@ -48,7 +51,13 @@ protoDef(Object, 'find', function(f) { // Iterator: (val, key) => bool; returns 
 });
 protoDef(Object, 'has', Object.prototype.hasOwnProperty);
 protoDef(Object, 'isEmpty', function() { for (let k in this) return false; return true; });
-protoDef(Object, 'gain', function(obj) {
+protoDef(Object, 'gain', function(...objs) {
+  // TODO: The idea is to assign all provided Objects together so that
+  // any C.skip props will be aggregated - this allows `obj` to be
+  // iterated for C.skip detection rather than `this`, since presumably
+  // `this` is larger than all `objs` combined - but is this worth the
+  // overhead of calling `Object.assign` x 2?
+  let obj = Object.assign({}, ...objs);
   Object.assign(this, obj);
   for (let k in obj) if (obj[k] === C.skip) delete this[k];
   return this;
@@ -84,6 +93,19 @@ protoDef(Array, 'isEmpty', function() { return !this.length; });
 protoDef(Array, 'add', function(...args) { this.push(...args); return args[0]; });
 protoDef(Array, 'gain', function(arr) { this.push(...arr); return this; });
 protoDef(Array, 'count', function() { return this.length; });
+protoDef(Array, 'categorize', function(fn) {
+  
+  //  [ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 ].categorize(n => {
+  //    if (n < 4) return 'small';
+  //    if (n < 8) return 'medium';
+  //    return 'big';
+  //  })
+  //  === { small: [ 1, 2, 3 ], medium: [ 4, 5, 6, 7 ], big: [ 8, 9, 10 ] }
+  
+  let ret = {};
+  for (let elem of this) { let key = fn(elem); if (!ret.has(key)) ret[key] = []; ret[key].add(elem); }
+  return ret;
+});
 
 protoDef(String, 'has', function(v) { return this.indexOf(v) >= 0; });
 protoDef(String, 'hasHead', function(str) {
@@ -98,12 +120,12 @@ protoDef(String, 'hasTail', function(str) {
   return true;
 });
 protoDef(String, 'padHead', function(amt, char=' ') {
-  let ret = this;
+  let ret = this.valueOf(); // Work entirely with the primitive
   while (ret.length < amt) ret = char + ret;
   return ret;
 });
 protoDef(String, 'padTail', function(amt, char=' ') {
-  let ret = this;
+  let ret = this.valueOf();
   while (ret.length < amt) ret += char;
   return ret;
 });
@@ -135,7 +157,7 @@ protoDef(String, 'encodeInt', function(chrs=C.base62) {
 protoDef(Number, 'char', function() { return String.fromCharCode(this); });
 protoDef(Number, 'each', function(fn) { for (let i = 0; i < this; i++) fn(i); });
 protoDef(Number, 'toArr', function(fn) { let arr = Array(this); for (let i = 0; i < this; i++) arr[i] = fn(i); return arr; });
-protoDef(Number, 'toObj', function(fn) { let o = {}; for (let i = 0; i < this; i++) { let [ k, v ] = fn(i); o[k] = v; } return p; });
+protoDef(Number, 'toObj', function(fn) { let o = {}; for (let i = 0; i < this; i++) { let [ k, v ] = fn(i); o[k] = v; } return o; });
 protoDef(Number, 'encodeStr', function(chrs=C.base62, padLen=null) {
   
   // Note that base-1 requires 0 to map to the empty string. This also
@@ -146,7 +168,7 @@ protoDef(Number, 'encodeStr', function(chrs=C.base62, padLen=null) {
   
   if (!chrs) throw Error(`No characters provided`);
   
-  let n = this, base = chrs.count(), digits = 1, amt = 1, seq = [];
+  let n = this.valueOf(), base = chrs.count(), digits = 1, amt = 1, seq = [];
   
   if (base === 1 && padLen) throw Error(`Can't pad when using base-1 encoding`);
   
@@ -180,8 +202,8 @@ protoDef(SetOrig, 'toObj', function(fn) {
 });
 protoDef(SetOrig, 'map', SetOrig.prototype.toArr);
 protoDef(SetOrig, 'each', SetOrig.prototype.forEach);
-protoDef(SetOrig, 'find', function(f) { // Iterator: (val) => bool; returns { found, val }
-  for (let v of this) if (f(v)) return { found: true, val: v };
+protoDef(SetOrig, 'find', function(fn) { // Iterator: (val) => bool; returns { found, val }
+  for (let val of this) if (fn(val)) return { found: true, val };
   return { found: false, val: null };
 });
 protoDef(SetOrig, 'count', function() { return this.size; });
@@ -334,7 +356,10 @@ let U = global.U = {
     // explicit way to tell which parent returned a particular value.
     parForms.allArr = (methodName, workFn) => {
       let props = parForms.toArr(proto => proto.has(methodName) ? proto[methodName] : C.skip);
-      return function(...args) { return workFn.call(this, props.map(m => m.call(this, ...args)), ...args); };
+      return function(...args) {
+        let allFnResults = ({}).map.call(props, m => m.call(this, ...args));
+        return workFn.call(this, allFnResults, ...args);
+      };
     };
     
     // If `props` is a function it becomes the result of its call
@@ -344,7 +369,7 @@ let U = global.U = {
     if (!U.isForm(props, Object)) throw Error(`Couldn't resolve "props" to Object`);
     
     // Ensure reserved property names haven't been used
-    for (let k of U.reservedFormProps) if (props.has(k)) throw Error(`Used reserved "${k}" key`);
+    for (let k of U.reservedFormProps) if (({}).has.call(props, k)) throw Error(`Used reserved "${k}" key`);
     
     // Collect all inherited props
     let propsByName = {};
@@ -356,7 +381,7 @@ let U = global.U = {
       if (U.reservedFormProps.has(propName)) continue;
       
       // Store all props under the same name in the same Set
-      if (!propsByName.has(propName)) propsByName[propName] = Set();
+      if (!({}).has.call(propsByName, propName)) propsByName[propName] = Set();
       propsByName[propName].add(prop);
       
     }};
@@ -372,13 +397,18 @@ let U = global.U = {
       
     }
     
-    // At this point an "init" prop is required! TODO: Allow for uninitializable ("abstract") Forms?
-    if (!propsByName.has('init')) throw Error('No "init" method available');
+    // At this point an "init" prop is required! Note that if we want to
+    // mark a Form as "abstract" and not independently initializable we
+    // can set its "init" property to `C.noFn('init')`
+    if (!({}).has.call(propsByName, 'init')) {
+      console.log({ name, propsByName });
+      throw Error('No "init" method available');
+    }
     
-    for (let [ propName, props ] of propsByName) {
+    for (let [ propName, propsOfThatName ] of propsByName) {
       
       // Filter out any '~noFormCollision
-      let propsAtName = props.toArr(v => (v && v['~noFormCollision']) ? C.skip : v);
+      let propsAtName = propsOfThatName.toArr(v => (v && v['~noFormCollision']) ? C.skip : v);
       
       // Ensure there are no collisions for this prop. In case of
       // collisions, the solution is for the Form defining the collision
@@ -494,7 +524,7 @@ U.logic = (() => {
     init: function(fn) {
       
       // Allow Endable.prototype.cleanup to be masked
-      if (fn) Object.defineProperty(this, 'cleanup', { value: fn, writable: true, configurable: true, enumerable: true });
+      if (fn) propDef(this, 'cleanup', fn);
       Form.globalRegistry.add(this);
       
     },
@@ -503,7 +533,7 @@ U.logic = (() => {
     cleanup: function() {},
     end: function(...args) {
       if (this.off()) return false;
-      Object.defineProperty(this, 'onn', { value: () => false, writable: true, configurable: true, enumerable: true });
+      propDef(this, 'onn', Function.stub.bind(null, false));
       Form.globalRegistry.rem(this);
       this.cleanup(...args);
       return true;
@@ -535,16 +565,9 @@ U.logic = (() => {
       
     }
   })});
-  let Tmp = U.form({ name: 'Tmp', has: { Endable, Src }, props: (forms, Form) => ({
-    init: function(fn=null) {
-      forms.Src.init.call(this);
-      forms.Endable.init.call(this);
-      if (fn) this.route(fn, 'prm');
-    },
-    ref: function() { this.refCount = (this.refCount || 0) + 1; },
-    end: function(...args) { return this.sendAndEnd(...args); },  // TODO: high-traffic code... should reference `sendAndEnd` instead of delegating...??
-    send: function(...args) { return this.sendAndEnd(...args); },
-    sendAndEnd: function(...args) {
+  let Tmp = U.form({ name: 'Tmp', has: { Endable, Src }, props: (forms, Form) => {
+    
+    let sendAndEnd = function(...args) {
       
       // Sending and ending are synonymous for a Tmp
       
@@ -556,23 +579,37 @@ U.logic = (() => {
       this.fns = Set.stub;
       return;
       
-    },
-    newRoute: function(fn) { if (this.off()) fn(); },
-    endWith: function(val, mode='prm') {
+    };
+    return {
+    
+      init: function(fn=null) {
+        forms.Src.init.call(this);
+        forms.Endable.init.call(this);
+        if (fn) this.route(fn, 'prm');
+      },
+      ref: function() { this.refCount = (this.refCount || 0) + 1; },
+      end: sendAndEnd,
+      send: sendAndEnd,
+      newRoute: function(fn) { if (this.off()) fn(); },
+      endWith: function(val, mode='prm') {
+        
+        // Creates a relationship such that whenever `this` ends the
+        // supplied `val` also ends. If `mode` is "prm" the relationship
+        // is permanent. Otherwise if `mode` is "tmp" the relationship can
+        // be severed, allowing `this` to end without `val` also ending.
+        // If `mode === 'prm'` returns `this` for convenience
+        // If `mode === 'tmp'` returns a Tmp representing the relationship
+        
+        if (U.hasForm(val, Function)) return this.route(val, mode) || this;
+        if (U.hasForm(val, Endable)) return this.route((...args) => val.end(...args), mode) || this;
+        throw Error(`Can't end with a value of type ${U.getFormName(val)}`);
+        
+      },
+      limit: function(tmp) { this.endWith(tmp, 'prm'); return tmp; }
       
-      // Creates a relationship such that whenever `this` ends the
-      // supplied `val` also ends. If `mode` is "prm" the relationship
-      // is permanent. Otherwise if `mode` is "tmp" the relationship can
-      // be severed, allowing `this` to end without `val` also ending.
-      // If `mode === 'prm'` returns `this` for convenience
-      // If `mode === 'tmp'` returns a Tmp representing the relationship
-      
-      if (U.hasForm(val, Function)) return this.route(val, mode) || this;
-      if (U.hasForm(val, Endable)) return this.route((...args) => val.end(...args), mode) || this;
-      throw Error(`Can't end with a value of type ${U.getFormName(val)}`);
-      
-    }
-  })});
+    };
+    
+  }});
   
   Src.stub = { route: () => Tmp.stub, send: Function.stub };
   Tmp.stub = (t => (t.end(), t))(Tmp());
@@ -625,6 +662,7 @@ U.logic = (() => {
       if (this.val !== C.skip) this.send(val);
       
     },
+    update: function(fn) { this.retain(fn(this.val)); },
     cleanup: function() { this.val = C.skip; }
   })});
   MemSrc.PrmM = U.form({ name: 'MemSrc.PrmM', has: { MemSrc }, props: (forms, Form) => ({
@@ -698,26 +736,28 @@ U.logic = (() => {
     
     init: function(src) {
       
-      let tmps = Set();
+      forms.Src.init.call(this);
+      this.tmps = Set();
       this.tmpRoutes = Set();
       this.srcRoute = src.route(tmp => {
         
         if (tmp.off()) return;
         
         let tmpRoute = tmp.route(() => {
-          tmps.rem(tmp);
+          this.tmps.rem(tmp);
           this.tmpRoutes.rem(tmpRoute);
-          this.send(tmps);
+          this.send(this.tmps);
         });
         
-        tmps.add(tmp);
+        this.tmps.add(tmp);
         this.tmpRoutes.add(tmpRoute);
         
-        this.send(tmps);
+        this.send(this.tmps);
         
       });
       
     },
+    newRoute: function(fn) { fn(this.tmps); },
     cleanup: function() {
       this.srcRoute.end();
       for (let r of this.tmpRoutes) r.end();
@@ -737,6 +777,10 @@ U.logic = (() => {
     cleanup: function() { this.srcRoute.end(); }
   })});
   let FnSrc = U.form({ name: 'FnSrc', has: { Endable, Src }, props: (forms, Form) => ({
+    
+    // TODO: FnSrc is potentially too high-level; should consider only
+    // allowing it to receive a single Src, and Send a transformed value
+    // for every Send received from that Src...
     
     // Provides capacity to monitor an arbitrary number of Srcs and run
     // functionality based on the most recent result from each Src.
@@ -822,7 +866,9 @@ U.logic = (() => {
   
   let Chooser = U.form({ name: 'Chooser', has: { Endable, Src }, props: (forms, Form) => ({
     
-    ///
+    // From a fixed list of categories, allow arbitrary logic to modify
+    // which category is considered "active" at a given moment. Only a
+    // single category may be "active" at once.
     
     init: function(names, src=null) {
       forms.Endable.init.call(this);
@@ -897,6 +943,7 @@ U.logic = (() => {
       if (this.srcRoute) this.srcRoute.end();
       this.srcs[this.activeSrcName].val.end();
     }
+    
   })});
   let Scope = U.form({ name: 'Scope', has: { Tmp }, props: (forms, Form) => ({
     init: function(src, fn) {
@@ -984,7 +1031,7 @@ U.logic = (() => {
       if (this.num <= 0) this.end();
     },
     cleanup: function() {
-      this.send = () => {}; // TODO: Maybe an intermediate EndableSrc Form, whose cleanup always destroys any further ability to send?
+      propDef(this, 'send', Function.stub);
       clearInterval(this.interval);
     }
     

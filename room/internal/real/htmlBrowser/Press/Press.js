@@ -3,8 +3,10 @@ global.rooms['internal.real.htmlBrowser.Press'] = async foundation => {
   let Layout = await foundation.getRoom('internal.real.generic.Layout');
   let { Src, Tmp } = U.logic;
   
-  return U.form({ name: 'Press', has: { Layout }, props: (forms, Form) => ({
+  return U.form({ name: 'Press', has: { Layout, Src }, props: (forms, Form) => ({
     init: function({ modes=[ 'continuous', 'discrete' ] }={}) {
+      
+      forms.Src.init.call(this);
       
       if (!U.isForm(modes, Array)) modes = [ modes ];
       if (!modes.count()) throw Error(`Supply at least one mode`);
@@ -12,7 +14,6 @@ global.rooms['internal.real.htmlBrowser.Press'] = async foundation => {
       if (modes.find(v => !U.isForm(v, String)).found) throw Error(`All modes should be String`);
       if (modes.find(v => ![ 'continuous', 'discrete' ].includes(v)).found) throw Error(`Invalid mode; use either "continuous" or "discrete"`);
       this.modes = modes;
-      this.src = Src();
       
     },
     isInnerLayout: function() { return false; },
@@ -23,7 +24,7 @@ global.rooms['internal.real.htmlBrowser.Press'] = async foundation => {
       let domNode = real.domNode;
       
       if (this.modes.has('continuous')) {
-        let clickFn = evt => this.src.send();
+        let clickFn = evt => this.send();
         domNode.addEventListener('click', clickFn);
         tmp.endWith(() => domNode.removeEventListener('click', clickFn));
       }
@@ -33,7 +34,7 @@ global.rooms['internal.real.htmlBrowser.Press'] = async foundation => {
           if (evt.ctrlKey || evt.altKey || evt.shiftKey || evt.code !== 'Enter') return;
           evt.preventDefault();
           evt.stopPropagation();
-          this.src.send(evt);
+          this.send();
         };
         domNode.addEventListener('keypress', keyFn);
         tmp.endWith(() => domNode.removeEventListener('keypress', keyFn));

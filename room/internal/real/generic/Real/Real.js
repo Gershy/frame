@@ -2,7 +2,7 @@ global.rooms['internal.real.generic.Real'] = async foundation => {
   
   let { Tmp } = U.logic;
   return U.form({ name: 'Real', has: { Tmp }, props: (forms, Form) => ({
-    init: function({ name=null, params={}, layouts=Set(), parent=null }={}) {
+    init: function({ name=null, params={}, tree=null, layouts=Set(), parent=null }={}) {
       
       forms.Tmp.init.call(this);
       
@@ -11,7 +11,7 @@ global.rooms['internal.real.generic.Real'] = async foundation => {
       this.parent = parent;
       this.root = parent ? parent.root : this;
       this.children = Set();
-      this.tree = {};
+      this.tree = tree;
       
       this.layouts = Set();
       for (let layout of layouts) this.addLayout(layout);
@@ -47,40 +47,55 @@ global.rooms['internal.real.generic.Real'] = async foundation => {
       let real = (() => {
         
         // If a simple Real instance was provided, attach and return it:
-        if (args.count() === 1 && U.isForm(args[0], this.Form)) {
-          if (real.parent) throw Error(`Real already has a parent`);
-          real.parent = this;
-          real.root = this.root;
-          return real;
-        }
+        if (args.count() === 1 && U.isForm(args[0], this.Form)) return real;
         
+        // If instead a String naming a Real is provided:
         if (U.isForm(args[0], String)) {
           
-          let name = args[0];
-          
-          // Add our namespace prefix to the child's name if necessary
-          if (!name.has('.')) name = `${this.name.cut('.', 1)[0]}.${name}`;
+          // Get `name` and `namespace` separately, regardless of
+          // whether `args[0]` specified a namespace
+          let [ namespace, name ] = (() => {
+            if (args[0].has('.')) return args[0].cut('.', 1);
+            return [ this.name.cut('.', 1)[0], args[0] ];
+          })();
           
           // Use the knowledge that `params` will be an Object, while
           // `layouts` will be an `Array`
           let params = args.find(v => U.isForm(v, Object)).val || {};
           let layouts = args.find(v => U.isForm(v, Array)).val || [];
           
-          // Include any additional info from the tree
-          if (this.tree.has(name)) {
-            let treeDef = this.tree[name];
-            params = { ...params, ...treeDef.params };
-            layouts = [ ...layouts, ...treeDef.layouts ];
+          // Extend `params` and `layouts` from a RealTree if applicable
+          if (this.tree && namespace === this.tree.name && this.tree.has(name)) {
+            let treeDef = this.tree.get(name);
+            params.gain(treeDef.params);
+            layouts.gain(treeDef.layouts);
           }
           
+          // Add `params` and all immediately-available Layouts
           let RealForm = this.Form;
-          return RealForm({ name, parent: this, params, layouts });
+          let real = RealForm({
+            name: `${namespace}.${name}`,
+            layouts: layouts.map(lay => !U.isForm(lay, Promise) ? lay : C.skip),
+            params
+          });
+          
+          // Add all promised Layouts when they're available
+          for (let layPrm of layouts.map(lay => U.isForm(lay, Promise) ? lay : C.skip)) {
+            layPrm.then(lay => real.addLayout(lay));
+          }
+          
+          return real;
           
         }
         
         throw Error(`Couldn't derive Real from given params (args[0] was a ${U.getFormName(args[0])})`);
         
       })();
+      
+      if (real.parent) throw Error(`Real already has a parent`);
+      real.parent = this;
+      real.root = this.root;
+      real.tree = this.tree;
       
       for (let innerLayout of this.layouts.map(l => l.isInnerLayout() ? l : C.skip)) {
         real.addLayout(innerLayout.getChildLayout());
@@ -89,31 +104,33 @@ global.rooms['internal.real.generic.Real'] = async foundation => {
       this.children.add(real);
       real.endWith(() => this.children.rem(real));
       
+      return real;
+      
     },
     
     cleanup: function() {
-      this.parent = null;
-      for (let layout of this.layouts) layout.end();
       // TODO: rerender upon cleanup? Some Techs may require it...
+      this.parent = null;
     },
     addLayout: function(layout) {
       
+      let realHasLayoutTmp = Object.assign(Tmp(), { layout });
+      
       if (layout.isInnerLayout()) for (let child of this.children) {
         let childLayout = layout.getChildLayout(child);
-        layout.endWith(childLayout);
-        child.addLayout(childLayout);
+        realHasLayoutTmp.endWith(child.addLayout(childLayout));
       }
       
-      layout.endWith(layout.install(this));
+      realHasLayoutTmp.endWith(layout.install(this));
       
       this.layouts.add(layout);
       this.render({ add: [ layout ] });
-      layout.endWith(() => {
+      realHasLayoutTmp.endWith(() => {
         this.layouts.rem(layout);
         this.render({ rem: [ layout ] });
       });
       
-      return layout;
+      return realHasLayoutTmp;
       
     }
   })});

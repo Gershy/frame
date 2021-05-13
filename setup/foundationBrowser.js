@@ -98,8 +98,6 @@
       let primaryHtmlCssJsReal = Real({ name: 'browser.htmlCssJs' });
       primaryHtmlCssJsReal.domNode = document.body;
       
-      //primaryHtmlCssJsReal.layoutForms = {};
-      
       primaryHtmlCssJsReal.tech = ({
         
         // css techniques:
@@ -124,25 +122,12 @@
         },
         getLayoutForms: names => {
           
-          //let layoutForms = primaryHtmlCssJsReal.layoutForms;
-          //let missingRooms = names.map(name => !layoutForms.has(name));
-          //
-          //let rooms = await foundation.getRooms(names.map(name => `internal.real.htmlBrowser.${name}`));
-          
           return foundation.getRooms(names.map(name => `internal.real.htmlBrowser.${name}`));
-          
           
         },
         getLayoutForm: name => {
           
-          return U.then(this.getLayoutForms([ name ]), forms => forms[name]);
-          
-          // let layoutForms = primaryHtmlCssJsReal.layoutForms;
-          // if (!layoutForms.has(name)) {
-          //   layoutForms[name] = this.getRoom(`internal.real.htmlBrowser.${name}`);
-          //   U.then(layoutForms[name], Form => layoutForms[name] = Form);
-          // }
-          // return layoutForms[name];
+          return U.then(primaryHtmlCssJsReal.tech.getLayoutForms([ name ]), forms => forms[name]);
           
         },
         select: (real=null) => {
@@ -247,7 +232,11 @@
           sokt.send(JSON.stringify(msg));
         }
         road.currentCost = () => 0.5;
-        sokt.onmessage = ({ data }) => road.hear.send([ JSON.parse(data), null, this.getMs() ]);
+        sokt.onmessage = ({ data }) => {
+          // Parse `data`; consider it a Tell if it isn't `null`
+          data = JSON.parse(data);
+          if (data) road.hear.send([ data, null, this.getMs() ]);
+        };
       };
       server.addPool = pool => Tmp.stub;
       

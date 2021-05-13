@@ -1,10 +1,5 @@
-U.buildRoom({ name: 'flyLevels', innerRooms: [], build: () => {
+global.rooms['fly.level'] = async foundation => {
   
-  /// {BELOW=
-  return {};
-  /// =BELOW}
-  
-  /// {ABOVE=
   let paragraph = str => str.split('\n').map(v => v.trim() || C.skip).join(' ');
   return {
     rustlingMeadow: { num: 0, name: 'Rustling Meadow', password: '',
@@ -15,7 +10,7 @@ U.buildRoom({ name: 'flyLevels', innerRooms: [], build: () => {
         whining reaches their ears, far off and tiny, like the buzz of wasp wings. "Back in your
         ships!" blares Joust Man. His eyes narrow as he turns from the sunlit field to his
         death-delivering fighter jet. Wasps bring stingers. A grim thought runs through his mind:
-        "It Is Happening Again"
+        "It Is Happening Again."
       `),
       winText: paragraph(`
         "Bogies destroyed!" yells Salvo Lad. "Those ship's markings looked Yemenese!" shouts back
@@ -744,9 +739,8 @@ U.buildRoom({ name: 'flyLevels', innerRooms: [], build: () => {
       ]
     },
     killPlains: { num: 1, name: 'Kill Plains', password: 'R4CIN6',
-      desc: [
-      
-      ].join(' '),
+      desc: paragraph(``),
+      winText: paragraph(``),
       moments: [
         { name: 'practice1', type: 'MomentAhead', terrain: 'plains', dist: 1000, aheadSpd: 100,
           bounds: { total: { w: 360, h: 450 }, player: { x: 0, y: 0, w: 360, h: 450 } },
@@ -932,6 +926,5 @@ U.buildRoom({ name: 'flyLevels', innerRooms: [], build: () => {
       ]
     }
   };
-  /// =ABOVE}
   
-}});
+};

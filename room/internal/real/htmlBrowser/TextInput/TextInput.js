@@ -4,16 +4,13 @@ global.rooms['internal.real.htmlBrowser.TextInput'] = async foundation => {
   let { MemSrc, Tmp, Src } = U.logic;
   
   return U.form({ name: 'TextInput', has: { Layout, Src }, props: (forms, Form) => ({
-    init: function({ multiline=false, prompt, size=null, align=null, gap=null }) {
-      Object.assign(this, { multiline, prompt, size, align, gap, real: null, lastVal: null });
+    init: function({ multiline=false, prompt, size=null, align='mid', gap=null }) {
+      forms.Src.init.call(this);
+      Object.assign(this, { multiline, prompt, size, align, gap, real: null, val: '' });
     },
+    newRoute: function(fn) { fn(this.val); },
     isInnerLayout: function() { return false; },
-    
     install: function(real) {
-      
-      // TODO: CHECK THE DIFF! `this` is a Src which stores its value on
-      // `real.params.text` - only thing left to do is update the dom
-      // when `real.params.text` changes from outside forces!
       
       if (!this.real) {
         this.real = real;
@@ -48,9 +45,10 @@ global.rooms['internal.real.htmlBrowser.TextInput'] = async foundation => {
       domNode.appendChild(input);
       tmp.endWith(() => input.remove());
       
-      let inpFn = evt => this.send(real.params.text = input.value);
-      input.addEventListener('input', inpFn);
-      tmp.endWith(() => input.removeEventListener('input', inpFn));
+      let inputEventFn = evt => this.send(this.val = real.params.text = input.value);
+      input.addEventListener('input', inputEventFn);
+      tmp.endWith(() => input.removeEventListener('input', inputEventFn));
+      
       return tmp;
       
     },
@@ -58,6 +56,13 @@ global.rooms['internal.real.htmlBrowser.TextInput'] = async foundation => {
       
       if (this.multiline) {
       } else {
+      }
+      
+      if (!real.params.has('text')) real.params.text = '';
+      if (real.params.text !== this.val) {
+        let inputElem = domNode.querySelector('input');
+        inputElem.value = this.val = real.params.text;
+        this.send(this.val);
       }
       
       if (!domNode.style.position) domNode.style.position = 'relative';
@@ -69,7 +74,6 @@ global.rooms['internal.real.htmlBrowser.TextInput'] = async foundation => {
       }
       
     }
-    
   })});
   
 };

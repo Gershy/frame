@@ -25,7 +25,7 @@ global.rooms['internal.test.test1'] = async foundation => {
       
       let mainReal = dep(real.addReal('test1.main', [
         lay.Free({ w: '100%', h: '100%' }),
-        lay.Axis1D({ axis: 'x', flow: '+', cuts: 'focus' })
+        lay.Axis1D({ axis: 'x', flow: '+', mode: 'compactCenter' })
       ]));
       let decrementReal = mainReal.addReal('test1.decrement', { text: '-' }, [
         lay.Text({ size: '300%' }),

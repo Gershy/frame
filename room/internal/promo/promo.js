@@ -45,18 +45,21 @@ global.rooms['internal.promo'] = async foundation => {
       
       let rootReal = await foundation.seek('real', 'primary');
       
-      // Axis1DLayout - "cuts" can be:
-      // Arr for ad-hoc sections (with "fill remaining" as last section)
-      // Int for n evenly divided sections (TODO: necessary? Just divide evenly for number of children added)
+      // Axis1DLayout - "mode" can be:
+      // - Array for custom-sized sections (and fill final section)
+      // - "compactCenter" to press all children together in the middle
+      // - "disperseTouchEdge" evenly spaces kids; no padding at edges
+      // - "dispersePadHalfEdge" evenly space; half padding at edges
+      // - "dispersePadFullEdge" even children; even padding
       // Omitted for arbitrary flow of sections (no param required for child layouts)
       
       let promoReal = dep(rootReal.addReal('pmo.promo', ctx => ({
         layouts: [ FreeLayout({ w: '100%', h: '100%' }) ],
-        innerLayout: Axis1DLayout({ axis: 'y', flow: '+', cuts: [ '80px' ] })
+        innerLayout: Axis1DLayout({ axis: 'y', flow: '+', mode: [ '80px' ] })
       })));
       let headerReal = promoReal.addReal('pmo.header', ctx => ({
         layouts: ctx.layouts(0),
-        innerLayout: Axis1DLayout({ axis: 'x', flow: '+', cuts: 'distribute' }),
+        innerLayout: Axis1DLayout({ axis: 'x', flow: '+', mode: 'stretch' }),
         decals: {
           border: { ext: '2px', colour: 'rgba(0, 0, 0, 0.1)' }
         }
@@ -82,7 +85,7 @@ global.rooms['internal.promo'] = async foundation => {
           
           let real = contentReal.addReal('pmo.content.hut', ctx => ({
             layouts: [ ...ctx.layouts(), SizedLayout({ w: '100%', h: '100%' }) ],
-            innerLayout: Axis1DLayout({ axis: 'y', flow: '+', cuts: 'focus' }),
+            innerLayout: Axis1DLayout({ axis: 'y', flow: '+', mode: 'compactCenter' }),
             decals: { colour: 'rgba(0, 0, 0, 0)' }
           }));
           let hutSectionImageReal = real.addReal('pmo.content.hut.image', ctx => ({
@@ -106,7 +109,7 @@ global.rooms['internal.promo'] = async foundation => {
           
           let real = contentReal.addReal('pmo.content.philosophy', ctx => ({
             layouts: [ ...ctx.layouts(), SizedLayout({ w: '100%', h: '100%' }) ],
-            innerLayout: Axis1DLayout({ axis: 'y', flow: '+', cuts: 'focus' }),
+            innerLayout: Axis1DLayout({ axis: 'y', flow: '+', mode: 'compactCenter' }),
             decals: { colour: 'rgba(0, 0, 0, 0)' }
           }));
           real.addReal('pmo.content.philosophy.text1', ctx => ({

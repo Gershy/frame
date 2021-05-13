@@ -155,7 +155,7 @@
       setContentType: function(contentType) { this.contentType = contentType; return this; },
       getFileUrl: function() { return Form.fs.cmpsToFileUrl(this.absPath); },
       access: function(dirNames) {
-        if (U.isForm(dirNames, String)) dirNames = [ dirNames ];
+        if (U.isForm(dirNames, String)) dirNames = dirNames.split(/[/\\]/);
         if (!U.isForm(dirNames, Array)) throw Error(`Dir names must be Array (or String)`);
         if (dirNames.find(d => !U.isForm(d, String)).found) throw Error(`All dir names must be Strings`);
         
@@ -1370,6 +1370,9 @@
             
           }
           return layouts[name];
+        },
+        getLayoutForms: names => {
+          return names.toObj(name => [ name, primaryFakeReal.getLayoutForm(name) ]);
         },
         render: Function.stub
       };

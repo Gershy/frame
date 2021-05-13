@@ -22,7 +22,7 @@ global.rooms['chess2'] = async foundation => {
   
   let staticKeep = foundation.seek('keep', 'static');
   /// {ABOVE=
-  let { TermBank } = await foundation.getRoom('term');
+  let TermBank = await foundation.getRoom('TermBank');
   let termBank = TermBank();
   /// =ABOVE}
   
@@ -431,15 +431,15 @@ global.rooms['chess2'] = async foundation => {
     },
     kidFn: async (hut, rec, real, dep) => {
       
-      let layoutNames = [ 'Free', 'Size', 'Axis1D', 'Decal', 'Text', 'Press', 'Image', 'Transform' ];
+      let layoutNames = [ 'Geom', 'Axis1D', 'Decal', 'Text', 'Press', 'Image', 'Transform' ];
       let lay = await Promise.allObj(layoutNames.toObj(ln => [ ln, real.getLayoutForm(ln) ]));
       
       let bgReal = dep(real.addReal('c2.bg', [
-        lay.Free({ w: '100%', h: '100%' }),
-        lay.Axis1D({ axis: 'x', dir: '+', cuts: 'focus' }),
+        lay.Geom({ w: '100%', h: '100%' }),
+        lay.Axis1D({ axis: 'x', dir: '+', mode: 'compactCenter' }),
         lay.Decal({ colour: '#646496', textColour: '#ffffff' })
       ]));
-      let mainReal = bgReal.addReal('c2.main', [ lay.Free({ w: '100vmin', h: '100vmin' }) ]);
+      let mainReal = bgReal.addReal('c2.main', [ lay.Geom({ w: '100vmin', h: '100vmin' }) ]);
       
       /*
       
@@ -458,7 +458,7 @@ global.rooms['chess2'] = async foundation => {
         
         let enterReal = dep(mainReal.addReal('c2.enter', [
           lay.Free({ w: '60%', h: '60%' }),
-          lay.Axis1D({ axis: 'y', dir: '+', cuts: 'focus' }),
+          lay.Axis1D({ axis: 'y', dir: '+', mode: 'compactCenter' }),
           lay.Press({}),
           lay.Decal({ colour: 'rgba(120, 120, 170, 1)' })
         ]));
@@ -480,7 +480,7 @@ global.rooms['chess2'] = async foundation => {
         
         let enterReal = @mainReal.addReal('c2.enter', [
           lay.Free({ w: '60%', h: '60%' }),
-          lay.Axis1D({ axis: 'y', dir: '+', cuts: 'focus' }),
+          lay.Axis1D({ axis: 'y', dir: '+', mode: 'compactCenter' }),
           lay.Press({}),
           lay.Decal({ colour: 'rgba(120, 120, 170, 1)' })
         ]);
@@ -502,15 +502,15 @@ global.rooms['chess2'] = async foundation => {
         }));
         
         let enterReal = dep(mainReal.addReal('c2.enter', [
-          lay.Free({ w: '60%', h: '60%' }),
-          lay.Axis1D({ axis: 'y', dir: '+', cuts: 'focus' }),
+          lay.Geom({ w: '60%', h: '60%' }),
+          lay.Axis1D({ axis: 'y', dir: '+', mode: 'compactCenter' }),
           lay.Press({}),
           lay.Decal({ colour: 'rgba(120, 120, 170, 1)' })
         ]));
         let titleReal = enterReal.addReal('c2.title', { text: 'Chess2' }, [
           lay.Text({ size: '180%' })
         ]);
-        let gapReal = enterReal.addReal('c2.gap', [ lay.Size({ h: '14px' }) ]);
+        let gapReal = enterReal.addReal('c2.gap', [ lay.Geom({ h: '14px' }) ]);
         let greetingsReal = enterReal.addReal('c2.greetings', { text: 'Click to start playing!' }, [
           lay.Text({ size: '110%' })
         ]);
@@ -524,7 +524,7 @@ global.rooms['chess2'] = async foundation => {
         dep.scp(matchPlayerChooser.srcs.off, (noMatchPlayer, dep) => {
           
           let waitMatchReal = dep(mainReal.addReal('c2.waitMatch', { text: 'Waiting for match...' }, [
-            lay.Size({ w: '100%', h: '100%' }),
+            lay.Geom({ w: '100%', h: '100%' }),
             lay.Text({ size: '100%' })
           ]));
           
@@ -535,18 +535,18 @@ global.rooms['chess2'] = async foundation => {
           let myColour = matchPlayer.getVal('colour');
           
           let matchReal = dep(mainReal.addReal('c2.match', [
-            lay.Size({ w: '100%', h: '100%' }),
+            lay.Geom({ w: '100%', h: '100%' }),
             lay.Axis1D({ axis: 'y', dir: '+' }),
             lay.Decal({ colour: '#646496' }),
             lay.Transform({ rotate: (myColour === 'white') ? 0 : -0.5 })
           ]));
           let blackPlayerHolderReal = matchReal.addReal('c2.playerHolder', [
-            lay.Size({ w: '100%', h: '10%' }),
+            lay.Geom({ w: '100%', h: '10%' }),
             lay.Transform({ rotate: (myColour === 'white') ? 0 : -0.5 })
           ]);
-          let boardReal = matchReal.addReal('c2.board', [ lay.Size({ w: '80%', h: '80%' }) ]);
+          let boardReal = matchReal.addReal('c2.board', [ lay.Geom({ w: '80%', h: '80%' }) ]);
           let whitePlayerHolderReal = matchReal.addReal('c2.playerHolder', [
-            lay.Size({ w: '100%', h: '10%' }),
+            lay.Geom({ w: '100%', h: '10%' }),
             lay.Transform({ rotate: (myColour === 'white') ? 0 : -0.5 })
           ]);
           
@@ -555,7 +555,7 @@ global.rooms['chess2'] = async foundation => {
             let colour = matchPlayer.getVal('colour');
             let holderReal = (colour === 'white') ? whitePlayerHolderReal : blackPlayerHolderReal;
             let playerReal = dep(holderReal.addReal('c2.player', { text: '...' }, [
-              lay.Size({ w: '100%', h: '100%' }),
+              lay.Geom({ w: '100%', h: '100%' }),
               lay.Text({})
             ]));
             
@@ -574,7 +574,7 @@ global.rooms['chess2'] = async foundation => {
           (8).each(col => (8).each(row => {
             let colour = ((col % 2) === (row % 2)) ? 'white' : 'black';
             boardReal.addReal('c2.tile', [
-              lay.Free({ mode: 'tl', w: tileVal(1), h: tileVal(1), ...tileCoord(col, row) }),
+              lay.Geom({ anchor: 'tl', w: tileVal(1), h: tileVal(1), ...tileCoord(col, row) }),
               tileDecals[colour]
             ]);
           }));
@@ -582,7 +582,7 @@ global.rooms['chess2'] = async foundation => {
           dep.scp(match, 'c2.piece', (piece, dep) => {
             
             let pieceReal = dep(boardReal.addReal('c2.piece', [
-              lay.Free({ mode: 'tl', w: tileVal(1), h: tileVal(1), ...tileCoord(0, 0) }),
+              lay.Geom({ anchor: 'tl', w: tileVal(1), h: tileVal(1), ...tileCoord(0, 0) }),
               lay.Image({ keep: null }),
               lay.Transform({ rotate: (myColour === 'white') ? 0 : -0.5 })
             ]));
@@ -590,7 +590,7 @@ global.rooms['chess2'] = async foundation => {
             dep(piece.valSrc.route(() => {
               
               let { type, colour, col, row } = piece.getVals('type', 'col', 'row', 'colour');
-              Object.assign(pieceReal.getLayout(lay.Free), tileCoord(col, row));
+              Object.assign(pieceReal.getLayout(lay.Geom), tileCoord(col, row));
               
               pieceReal.getLayout(lay.Image).keep = foundation.seek('keep', 'static')
                 .seek([ 'room', 'chess2', 'img', pieceStyle, `${colour}${type[0].upper()}${type.slice(1)}.png` ]);

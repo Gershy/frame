@@ -66,6 +66,7 @@ global.rooms.record = async foundation => {
   
   let RecSrc = U.form({ name: 'RecSrc', has: { 'MemSrc.TmpM': MemSrc.TmpM }, methods: {} });
   let Rec = U.form({ name: 'Rec', has: { Tmp }, props: (forms, Form) => ({
+    
     init: function(type, uid, mems={}, val=null) {
       
       if (U.isForm(mems, Array)) mems = mems.toObj(mem => [ mem.type.name, mem ]);
@@ -179,7 +180,7 @@ global.rooms.record = async foundation => {
         for (let mem of layerMems) {
           let val = mem.valSrc.val;
           if (U.isForm(val, Object) && val.has(param)) return val[param];
-          mems.gain(mem.mems.toArr(m => m));
+          mems.gain(mem.mems.toArr(m => m)); // No infinite loop; Rec heirarchies cannot have cycles
         }
       }
       return null;
@@ -188,9 +189,7 @@ global.rooms.record = async foundation => {
     getValSrc: function() { return this.valSrc; },
     getFullValSrc: function() {
       let srcs = [ this.valSrc, ...this.mems.map(mem => mem.valSrc) ];
-      return FnSrc.PrmM(srcs, (...vals) => {
-        return Object.assign({}, ...vals.map(v => v || {}));
-      });
+      return FnSrc.PrmM( srcs, (...vals) => ({}).gain(...vals.map(v => v || {})) );
     },
     
     setVal: function(v) { if (v !== this.valSrc.val || U.isForm(v, Object)) this.valSrc.retain(v); return this; },
@@ -210,7 +209,7 @@ global.rooms.record = async foundation => {
       // This allows consuming code to detect that certain properties
       // have not changed, which may allow unnecessary reactions to be
       // avoided.
-      this.valSrc.val = { ...this.getVal(), ...delta };
+      this.valSrc.val = ({}).gain(this.getVal(), delta);
       this.valSrc.send(delta);
       return this;
       

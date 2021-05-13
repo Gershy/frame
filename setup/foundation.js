@@ -215,16 +215,17 @@
       
     },
     settleRoom: async function(name, { bearing, ...opts }={}) {
-      await this.ready();
       
-      // These do not parallelize (TODO: why??)
-      let room = await this.getRoom(name, bearing); // formerly bearing was hardcoded to 'above'
-      let hut = await this.getRootHut({ heartMs: 1000 * 40 });
+      await this.ready();
       
       // The settled room gets its Hut linked to static resources
       // TODO: Move to hinterlands.Setup?
+      let hut = await this.getRootHut({ heartMs: 1000 * 40 });
       this.seek('keep', 'static').setHut(hut);
+      
+      let room = await this.getRoom(name, bearing);
       return room.open(hut);
+      
     },
     installRoom: function(name, bearing) {
       
