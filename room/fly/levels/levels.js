@@ -1,4 +1,4 @@
-global.rooms['fly.level'] = async foundation => {
+global.rooms['fly.levels'] = async foundation => {
   
   let paragraph = str => str.split('\n').map(v => v.trim() || C.skip).join(' ');
   return {

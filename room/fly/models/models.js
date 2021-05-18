@@ -1,4 +1,4 @@
-global.rooms['fly.model'] = async foundation => {
+global.rooms['fly.models'] = async foundation => {
   
   let { Rec } = await foundation.getRoom('record');
   
@@ -105,7 +105,7 @@ global.rooms['fly.model'] = async foundation => {
       //if (!ud) throw Error(`Missing "ud" prop for init ${U.getFormName(this)}`);
       
       let { ms=null } = ud;
-      if (!U.isType(ms, Number)) {
+      if (!U.isForm(ms, Number)) {
         console.log(val);
         throw Error(`Bad "ms" param for ${U.getFormName(this)} (${U.getFormName(val.ms)})`);
       }
@@ -122,7 +122,7 @@ global.rooms['fly.model'] = async foundation => {
       let props = this.initProps(val);
       
       let sProps = this.initSyncs();
-      if (Set(sProps).size !== sProps.length) throw Error(`${U.getFormName(this)} defines sync properties multiple times`);
+      if (Set(sProps).size !== sProps.length) throw Error(`${U.getFormName(this)} defines sync properties multiple times (potentially through polymorphism)`);
       for (let spn of sProps) if (!props.has(spn)) throw Error(`${U.getFormName(this)} missing sync prop "${spn}"`);
       
       let syncProps = {};
@@ -185,7 +185,6 @@ global.rooms['fly.model'] = async foundation => {
     
   })});
   let Mortal = U.form({ name: 'Mortal', has: { Entity }, props: (forms, Form) => ({
-    init: C.noFn('init'),
     initProps: forms.allArr('initProps', (i, arr) => ({}).gain(...arr, { hpDmg: 0 })),
     getMaxHp: function() { return 1; },
     getCurrentHp: function(ud) { return this.getMaxHp(ud) - this.v('hpDmg'); },
@@ -434,7 +433,7 @@ global.rooms['fly.model'] = async foundation => {
   let Ace = U.form({ name: 'Ace', has: { Mortal, Physical }, props: (forms, Form) => ({
     
     $bound: { form: 'circle', r: 8 }, $respawnMs: 2750, $invulnMs: 1500, $spd: 165,
-    
+     
     initProps: forms.allArr('initProps', (i, arr, val) => {
       let { ud: { ms }, name='<anon>', cx=0, cy=0 } = val;
       return {}.gain(...arr, {
@@ -523,7 +522,6 @@ global.rooms['fly.model'] = async foundation => {
       }};
       
     },
-    
     aceUpdate: C.noFn('aceUpdate'),
     
     render: function(ud, draw) {
@@ -566,6 +564,7 @@ global.rooms['fly.model'] = async foundation => {
     
     initProps: forms.allArr('initProps', (i, arr) => ({}).gain(...arr, { w1Mark: null, w1State: 0, w2Mark: null })),
     initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'w1Mark', 'w1State', 'w2Mark' ].concat(...arr)),
+    
     aceUpdate: function(ud, { cx, cy, a1, a2 }) {
       
       let { aheadDist, ms, spf } = ud;
@@ -1382,7 +1381,6 @@ global.rooms['fly.model'] = async foundation => {
       };
       
     },
-    isAlive: forms.Mortal.isAlive,
     
     render: function(ud, draw) {
       

@@ -824,10 +824,9 @@ global.rooms.hinterlands = async foundation => {
       // will ensure that no value ever gets sent.
       let hearSrc = this.roadSrcs[command] = Src(); hearSrc.desc = `Hut TellSender for "${command}"`;
       tmp.endWith(() => delete this.roadSrcs[command]);
-      tmp.endWith(hearSrc.route(({ msg, reply }) => {
-        let result = U.safe(() => fn(msg));
+      tmp.endWith(hearSrc.route(({ msg, reply, ms, srcHut, trgHut }) => {
         
-        // if (U.hasForm(result, Error)) foundation.queueTask(() => { throw result; });
+        let result = U.safe(() => fn(msg, { ms, srcHut, trgHut }));
         
         /// {DEBUG= // TODO: this is DEBUG inside ABOVE; nesting not supported yet
         if (result != null && !U.isForm(result, Object, Array, String))
@@ -836,6 +835,7 @@ global.rooms.hinterlands = async foundation => {
         /// =DEBUG}
         
         reply(result);
+        
       }));
       
       /// =ABOVE} 

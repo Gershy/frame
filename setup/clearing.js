@@ -7,7 +7,7 @@ let C = global.C = Object.freeze({
   skip: undefined,
   base62: '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
   notImplemented: function() { throw Error(`Not implemented by ${U.getFormName(this)}`); },
-  noFn: name => {
+  noFn: (name) => {
     let fn = function() { throw Error(`${U.getFormName(this)} does not implement "${name}"`); }
     fn['~noFormCollision'] = true; // TODO: Use Symbol here??
     return fn;
@@ -27,6 +27,7 @@ let propDef = (inst, name, value, modifiers={}) => {
 };
 
 protoDef(Object, 'each', function(fn) { for (let [ k, v ] of this) fn(v, k); });
+protoDef(Object, 'has', Object.prototype.hasOwnProperty);
 protoDef(Object, 'map', function(fn) { // Iterator: (val, key) => val
   let ret = Object.assign({}, this);
   for (let k in ret) { let v = fn(ret[k], k); if (v !== C.skip) ret[k] = v; else delete ret[k]; }
@@ -49,7 +50,8 @@ protoDef(Object, 'find', function(f) { // Iterator: (val, key) => bool; returns 
   for (let k in this) if (f(this[k], k)) return { found: true, val: this[k], key: k };
   return { found: false, val: null, k: null };
 });
-protoDef(Object, 'has', Object.prototype.hasOwnProperty);
+protoDef(Object, 'all', function(fn=Boolean) { for (let [ k, v ] of this) if (!fn(v, k)) return false; return true; });
+protoDef(Object, 'any', function(fn=Boolean) { for (let [ k, v ] of this) if ( fn(v, k)) return true; return false; });
 protoDef(Object, 'isEmpty', function() { for (let k in this) return false; return true; });
 protoDef(Object, 'gain', function(...objs) {
   // TODO: The idea is to assign all provided Objects together so that
@@ -71,6 +73,7 @@ protoDef(Object, 'seek', function(keys) { // Returns { found: bool, val }
 protoDef(Object, Symbol.iterator, function*() { for (let k in this) yield [ k, this[k] ]; });
 
 protoDef(Array, 'each', Array.prototype.forEach);
+protoDef(Array, 'has', Array.prototype.includes);
 protoDef(Array, 'map', function(it) {
   let ret = [];
   for (let i = 0, len = this.length; i < len; i++) {
@@ -88,7 +91,8 @@ protoDef(Array, 'find', function(f) { // Iterator: (val, ind) => bool; returns {
   for (let i = 0, len = this.length; i < len; i++) if (f(this[i], i)) return { found: true, val: this[i], ind: i };
   return { found: false, val: null, ind: null };
 });
-protoDef(Array, 'has', Array.prototype.includes);
+protoDef(Array, 'all', function(fn=Boolean) { return this.every(fn); });
+protoDef(Array, 'any', function(fn=Boolean) { return this.some(fn); });
 protoDef(Array, 'isEmpty', function() { return !this.length; });
 protoDef(Array, 'add', function(...args) { this.push(...args); return args[0]; });
 protoDef(Array, 'gain', function(arr) { this.push(...arr); return this; });
@@ -288,7 +292,7 @@ let U = global.U = {
   },
   int32: Math.pow(2, 32),
   safe: (f1, f2=e=>e) => {
-    if (!U.isForm(f2, Function)) f2 = Function.stub.bind(null, f2);
+    if (!U.isForm(f2, Function)) f2 = () => f2;
     try { let r = f1(); return U.isForm(r, Promise) ? r.catch(f2) : r; }
     catch(err) { return f2(err); }
   },
@@ -300,16 +304,16 @@ let U = global.U = {
   reservedFormProps: Set([ 'constructor', 'Form' ]),
   form: ({ name, has={}, parForms=has, props=()=>({}) }) => {
     
-    // Ensure every ParForm is truly a Form (Function)
-    for (let [ k, Form ] of parForms) if (!U.isForm(Form, Function)) throw Error(`Invalid Form: "${k}"`);
+    // Ensure every ParForm is truly a Form
+    for (let [ k, Form ] of parForms) if (!U.isForm(Form)) throw Error(`Invalid Form: "${k}"`);
     
     let fName = name.replace(/[^a-zA-Z0-9]/g, '$');
     let Form = eval(`let Form = function ${fName}(...p) { /* ${name} */ return (this && this.constructor === Form) ? this.init(...p) : new Form(...p); }; Form;`);
     Object.defineProperty(Form, 'name', { value: name });
     
     // Calculate a Set of all parent Forms for `hasForm` testing
-    Form.forms = Set([ Form ]);
-    parForms.each(({ forms }) => forms.each(ParForm => Form.forms.add(ParForm)));
+    Form['~forms'] = Set([ Form ]);
+    parForms.each(parForm => parForm['~forms'].each(ParForm => Form['~forms'].add(ParForm)));
     
     // Keep track of parent classes directly
     Form.parents = parForms;
@@ -332,33 +336,34 @@ let U = global.U = {
     // return a value; this is enabled by supplying `workFn`, which is
     // called with the original arguments to the generated function.
     // Note that `workFn` has no access to any of the values generated
-    // by parent methods! Note that `function(){}` rather than `()=>{}`
-    // syntax should be preferred for `workFn`, as no `this` reference
-    // will be available using `()=>{}` syntax.
+    // by parent methods! Note that the first argument to `workFn` is
+    // always a `this` reference, allowing for shorter `()=>{}` syntax.
+    // TODO: What if some inherited props under `methodName` aren't
+    // functions but rather simple values???
     parForms.all = (methodName, workFn) => {
-      let props = parForms.toArr(proto => proto.has(methodName) ? proto[methodName] : C.skip);
+      let props = parForms.toArr(proto => (proto.has(methodName) && !proto[methodName]['~noFormCollision']) ? proto[methodName] : C.skip);
       return function(...args) {
         for (let m of props) m.call(this, ...args);
-        if (workFn) return workFn.call(this, ...args);
+        if (workFn) return workFn(this, ...args);
       };
     };
     
     // For `U.form({ name: 'MyForm', props: (forms, Form) => ... })`,
     // make `forms.allArr(name, fn)` available. `forms.allArr` is very
     // similar to `forms.all`, except `workFn`'s signature isn't:
-    //    |     workFn(...args)
+    //    |     workFn(thisRef, ...args)
     // but rather:
-    //    |     workFn(parResultArr, ...args)
+    //    |     workFn(thisRef, parResultArr, ...args)
     // The difference is the `parResultArr`, which contains the results
     // of all parents calling their own `name` functions. Note that the
     // use of an Array rather than an Object intentionally encourages
     // design to treat all returned parent values equally. There is no
     // explicit way to tell which parent returned a particular value.
     parForms.allArr = (methodName, workFn) => {
-      let props = parForms.toArr(proto => proto.has(methodName) ? proto[methodName] : C.skip);
+      let props = parForms.toArr(proto => (proto.has(methodName) && !proto[methodName]['~noFormCollision']) ? proto[methodName] : C.skip);
       return function(...args) {
-        let allFnResults = ({}).map.call(props, m => m.call(this, ...args));
-        return workFn.call(this, allFnResults, ...args);
+        let allFnResults = props.map(m => m.call(this, ...args));
+        return workFn(this, allFnResults, ...args);
       };
     };
     
@@ -369,7 +374,7 @@ let U = global.U = {
     if (!U.isForm(props, Object)) throw Error(`Couldn't resolve "props" to Object`);
     
     // Ensure reserved property names haven't been used
-    for (let k of U.reservedFormProps) if (({}).has.call(props, k)) throw Error(`Used reserved "${k}" key`);
+    for (let prop of U.reservedFormProps) if (({}).has.call(props, prop)) throw Error(`Used reserved "${prop}" key`);
     
     // Collect all inherited props
     let propsByName = {};
@@ -390,8 +395,10 @@ let U = global.U = {
     // unique to the Form being created!
     for (let [ propName, prop ] of props) {
       
-      // `propName` values iterated here will be unique; `props` is
-      // an object, and must have unique keys
+      if (prop === C.skip) throw Error(`Provided ${name} @ ${propName} as C.skip`);
+      
+      // `propName` values iterated here will be unique; `props` is an
+      // object, and must have unique keys
       if (propName[0] === '$')  Form[propName.slice(1)] = prop;        // "$" indicates class-level property
       else                      propsByName[propName] = Set([ prop ]); // Guaranteed to be singular
       
@@ -400,38 +407,37 @@ let U = global.U = {
     // At this point an "init" prop is required! Note that if we want to
     // mark a Form as "abstract" and not independently initializable we
     // can set its "init" property to `C.noFn('init')`
-    if (!({}).has.call(propsByName, 'init')) {
-      console.log({ name, propsByName });
-      throw Error('No "init" method available');
-    }
+    if (!({}).has.call(propsByName, 'init')) throw Error('No "init" method available');
     
     for (let [ propName, propsOfThatName ] of propsByName) {
       
-      // Filter out any '~noFormCollision
-      let propsAtName = propsOfThatName.toArr(v => (v && v['~noFormCollision']) ? C.skip : v);
+      // If there are collidable props under this name there can only be
+      // one! Multiple collidable props indicates the prop needs to be
+      // defined directly on `Form.prototype`, guaranteeing singularity.
+      // If *no* collidable props are set, settle for any of the
+      // non-collidable props
+      let collisionProps = propsOfThatName.toArr(v => (v && v['~noFormCollision']) ? C.skip : v);
+      if (collisionProps.length === 1) { protoDef(Form, propName, collisionProps[0]); continue; }
+      if (collisionProps.length > 1) throw Error(`Found ${propsAtName.length} props named "${propName}" for ${name} (need to define ${name}.protoype.${propName})`);
       
-      // Ensure there are no collisions for this prop. In case of
-      // collisions, the solution is for the Form defining the collision
-      // to define its own property under the collision name (and this
-      // property may take into account aspects of the ParForm props
-      // which collided; for example it may call all ParForm methods of
-      // the same name!)
-      if (propsAtName.length > 1)
-        throw Error(`Found ${propsAtName.length} props named "${propName}" for ${name} (to resolve define ${name}.protoype.${propName})`);
-      
-      protoDef(Form, propName, propsAtName.length ? propsAtName[0] : C.noFn(propName));
+      // Use the first non-collidable prop - note that all such props
+      // should be interchangeable
+      protoDef(Form, propName, propsOfThatName.toArr(v => v)[0]);
       
     }
     
     protoDef(Form, 'Form', Form);
     protoDef(Form, 'constructor', Form);
     Object.freeze(Form.prototype);
+    
     return Form;
   },
   isForm: (fact, ...forms) => {
     
-    // Detect and reject NaN! Hut philosophy!
-    if (fact !== fact) return false;
+    if (forms.length === 0) return fact != null && !!fact['~forms'];
+    
+    // NaN only matches against the NaN primitive (not the Number Form)
+    if (fact !== fact) return forms.includes(NaN);
     
     // Allow any provided Form to match...
     for (let Form of forms) {
@@ -457,14 +463,14 @@ let U = global.U = {
     if (fact == null) return false;
     
     // `fact` may either be a fact/instance, or a Form/Cls. In case a
-    // fact/instance was given the "constructor" property points us to
-    // the appropriate Form/Cls. We name this value `Form`, although it
+    // fact/instance was given, the "constructor" property points us to
+    // the appropriate Form/Cls. We name this value "Form", although it
     // is ambiguously a Form/Cls.
     let Form = U.isForm(fact, Function) ? fact : fact.constructor;
     
-    // If a "forms" property exists, `FormOrCls` is specifically a Form,
+    // If a "!forms" property exists `FormOrCls` is specifically a Form
     // and inheritance can be checked by existence in the set
-    if (Form.forms) return Form.forms.has(FormOrCls);
+    if (Form['~forms']) return Form['~forms'].has(FormOrCls);
     
     // No "forms" property; FormOrCls is specifically a Cls. Inheritance
     // can be checked using `instanceof`; prefer to compare against a
@@ -474,9 +480,6 @@ let U = global.U = {
   },
   getForm: f => (f != null) ? f.constructor : null,
   getFormName: f => {
-    
-    // Previous implementation:
-    // U.safe(() => f.constructor.name, () => U.safe(() => String(f), 'Unrepresentable')),
     
     if (f === null) return 'Null';
     if (f === undefined) return 'Undefined';
@@ -575,7 +578,13 @@ U.logic = (() => {
       if (this.refCount && --this.refCount > 0) return;
       
       if (!forms.Endable.end.call(this)) return; // Check if we're already ended
-      forms.Src.send.call(this, ...args); // Consider inlining to reduce stack
+      
+      // Note this is Src.prototype.send inlined here, with the intent
+      // of improving performance and reducing stack size. Note that
+      // changes to Src.prototype.send need to be reflected here:
+      for (let fn of [ ...this.fns ]) if (this.fns.has(fn)) fn(...args);
+      //forms.Src.send.call(this, ...args);
+      
       this.fns = Set.stub;
       return;
       
@@ -967,8 +976,10 @@ U.logic = (() => {
           if (deps.has(dep)) return; // Ignore duplicates
           
           if (U.hasForm(dep, Tmp)) {
-            // Note `deps` falsiness check; `deps` may be set to `null`
-            let remDep = dep.route(() => deps && (deps.rem(dep), deps.rem(remDep)));
+            // Any dependencies which are Tmps may end before the Scope
+            // causes them to end - ended Tmps no longer need to be
+            // referenced by this Scope!
+            let remDep = dep.route(() => deps && (deps.rem(dep), deps.rem(remDep))); // Note `deps` can become `null`
             deps.add(remDep);
           }
           
@@ -1016,19 +1027,24 @@ U.logic = (() => {
       // `num` may be set to `Infinity` for unlimited ticks
       
       if (!U.isForm(num, Number)) throw Error(`"num" must be integer`);
+      if (num < 0) throw Error(`"num" must be >= 0`);
       
       forms.Endable.init.call(this);
       forms.Src.init.call(this);
       
-      if (num <= 0) { this.end(); return; }
       this.num = num;
+      if (num === 0) { this.end(); return; }
+      
       this.interval = setInterval(() => this.doSend(), ms);
       if (immediate) Promise.resolve().then(() => this.doSend());
       
     },
     doSend: function() {
+      // An error thrown from any Route will short-circuit this function
+      // after `this.send(...)` is called
+      if (this.num <= 0) { throw Error(`Underlying Errors prevented TimerSrc from ending`); }
       this.send(--this.num);
-      if (this.num <= 0) this.end();
+      if (this.num === 0) this.end();
     },
     cleanup: function() {
       propDef(this, 'send', Function.stub);

@@ -29,18 +29,18 @@ global.rooms['fly'] = async foundation => {
   //             immediately and a best-effort is made to attach the
   //             non-immediately available Layouts as soon as possible
   
-  let { TermBank=null, random=null, Setup, HtmlBrowserHabitat, RealTree, level=null, model } = await foundation.getRooms([
+  let { TermBank=null, random=null, Setup, HtmlBrowserHabitat, RealTree, levels=null, models } = await foundation.getRooms([
     
     /// {ABOVE=
     'TermBank',
     'random',
-    'fly.level',
+    'fly.levels',
     /// =ABOVE}
     
     'hinterlands.Setup',
     'hinterlands.habitat.HtmlBrowserHabitat',
     'internal.real.RealTree',                 // TODO: Shouldn't be a requirement!! (Setup should probably take a "realTree" property??)
-    'fly.model'
+    'fly.models'
     
   ]);
   let { Chooser, MemSrc, SetSrc, Src, TimerSrc } = U.logic;
@@ -62,14 +62,14 @@ global.rooms['fly'] = async foundation => {
     ace: testAces[Math.floor(Math.random() * testAces.length)]
   };
   let getLevelData = name => ({
-    name, ...level[name].slice('num', 'password'),
-    dispName: level[name].name, dispDesc: level[name].desc
+    name, ...levels[name].slice('num', 'password'),
+    dispName: levels[name].name, dispDesc: levels[name].desc
   });
   let lobbyModelOptions = {
-    joust:  { name: 'Joust Man',  size: [ 16, 16 ], Form: model.JoustMan },
-    gun:    { name: 'Gun Girl',   size: [ 16, 16 ], Form: model.GunGirl },
-    slam:   { name: 'Slam Kid',   size: [ 16, 16 ], Form: model.SlamKid },
-    salvo:  { name: 'Salvo Lad',  size: [ 16, 16 ], Form: model.SalvoLad }
+    joust:  { name: 'Joust Man',  size: [ 16, 16 ], Form: models.JoustMan },
+    gun:    { name: 'Gun Girl',   size: [ 16, 16 ], Form: models.GunGirl },
+    slam:   { name: 'Slam Kid',   size: [ 16, 16 ], Form: models.SlamKid },
+    salvo:  { name: 'Salvo Lad',  size: [ 16, 16 ], Form: models.SalvoLad }
   };
   
   let realTree = RealTree('fly', (lay, define, insert) => {
@@ -206,9 +206,20 @@ global.rooms['fly'] = async foundation => {
   
   return Setup('fly', 'fly', {
     habitats: [ HtmlBrowserHabitat() ],
+    recForms: {
+      'fly.level': models.Level,
+      'fly.entity': val => {
+        console.log('Get fly.entity for:', val);
+        if (!U.isForm(val, Object) || !val.has('type') || !models.has(val.type)) {
+          throw Object.assign(Error(`No model available for modelVal`), { modelVal: val });
+        }
+        return models[val.type];
+      }
+    },
     parFn: async (hut, flyRec, real, dep) => {
       
       /// {ABOVE=
+      
       dep.scp(hut, 'lands.kidHut/par', (kidHut, dep) => {
         
         // Attach a "fly.player" Rec to every Hut
@@ -221,7 +232,7 @@ global.rooms['fly'] = async foundation => {
       });
       dep.scp(flyRec, 'fly.lobby', (lobby, dep) => {
         
-        let readinessSrc = MemSrc.Prm1({});
+        let readinessSrc = dep(MemSrc.Prm1({}));
         dep.scp(lobby, 'fly.lobbyPlayer', (lobbyPlayer, dep) => {
           
           let term = lobbyPlayer.getVal('term');
@@ -236,19 +247,45 @@ global.rooms['fly'] = async foundation => {
           
         });
         
+        /* THEORETICALLY:
+        SetSrc(lobbyPlayer)
+          .map(lp => lp.getValSrc())
+          .map(lpVal => lpVal.ready)
+          .choose([ 'waiting', 'ready' ], vals => vals.all() ? 'waiting' : 'ready');
+        */
+        
         let readyChooser = dep(Chooser([ 'waiting', 'ready' ]));
-        readinessSrc.route(r => readyChooser.choose(r.find(v => v === false).found ? 'waiting' : 'ready'));
+        readinessSrc.route(r => readyChooser.choose(r.all() ? 'ready' : 'waiting'));
         
         dep.scp(readyChooser.srcs.ready, (ready, dep) => {
           
           lobby.objVal({ allReadyMark: foundation.getMs() });
           dep(() => lobby.objVal({ allReadyMark: null }));
           
-          let timerSrc = dep(TimerSrc({ ms: 5000, num: 1 }));
-          dep(timerSrc.route(() => {
+          let timerSrc = TimerSrc({ ms: levelStartingDelay, num: 1 });
+          dep(timerSrc.route(n => {
             
-            let level = hut.createRec('fly.level', [ lobby ]);
-            for (let lobbyPlayer of lobby.relRecs('fly.lobbyPlayer')) lobbyPlayer.objVal({ modelTerm: null });
+            let ms = foundation.getMs();
+            let levelDef = levels[lobby.getVal('level').name];
+            let level = hut.createRec('fly.level', [ flyRec, lobby ], { ud: { ms }, ms, levelDef, flyHut: hut });
+            
+            for (let lobbyPlayer of lobby.relRecs('fly.lobbyPlayer')) {
+              
+              let player = lobbyPlayer.mems['fly.player'];
+              let levelPlayer = hut.createRec('fly.levelPlayer', [ level, player ], { deaths: 0, damage: 0 });
+              
+              let modelTerm = lobbyPlayer.getVal('modelTerm');
+              
+              let aceEntity = hut.createRec('fly.entity', [ level ], {
+                ud: { ms }, ms, type: lobbyModelOptions[modelTerm].Form.name, name: player.getVal('term'),
+                ax: Math.round(Math.random() * 200 - 100), ay: -200
+              });
+              
+              hut.createRec('fly.levelPlayerEntity', [ levelPlayer, aceEntity ]);
+              
+              lobbyPlayer.objVal({ modelTerm: null });
+              
+            }
             
           }));
           
@@ -413,7 +450,7 @@ global.rooms['fly'] = async foundation => {
             let submitLevelPasswordAct = dep(hut.enableAction('fly.submitLevelPassword', ({ password }) => {
               
               /// {ABOVE=
-              let levelName = level.find(v => v.password === password).key;
+              let levelName = levels.find(v => v.password === password).key;
               if (!levelName) throw Error(`Invalid password`);
               console.log(`Lobby ${myLobby.desc()} set to ${levelName}`);
               myLobby.objVal({ level: getLevelData(levelName) });
@@ -443,7 +480,6 @@ global.rooms['fly'] = async foundation => {
             dep.scp(myLobby, 'fly.lobbyPlayer', (teamLobbyPlayer, dep) => {
               
               let teamPlayer = teamLobbyPlayer.mems['fly.player'];
-              
               let teamPlayerReal = dep(teamReal.addReal('lobbyTeamPlayer', [
                 lay.Axis1D({ axis: 'x', dir: '+', mode: 'compactCenter' })
               ]));
@@ -484,7 +520,7 @@ global.rooms['fly'] = async foundation => {
                 ]);
                 let modelRealName = modelReal.addReal('lobbyTeamPlayerModelSetItemName', [
                   lay.Geom({ w: '100%', anchor: 'b' }),
-                  lay.Text({ size: 'calc(8px + 1vmin)', text: name })
+                  lay.Text({ size: 'calc(5px + 1vmin)', text: name })
                 ]);
                 
                 // Indicate the player's selected option
@@ -526,7 +562,7 @@ global.rooms['fly'] = async foundation => {
             dep.scp(statusChooser.srcs.starting, (waiting, dep) => {
               let timerSrc = dep(TimerSrc({ ms: 500, num: Infinity }));
               dep(timerSrc.route(() => {
-                let ms = 5000 - (foundation.getMs() - myLobby.getVal('allReadyMark'));
+                let ms = levelStartingDelay - (foundation.getMs() - myLobby.getVal('allReadyMark'));
                 statusReal.mod({ text: `Starting in ${Math.ceil(ms / 1000)}s...` });
               }));
               dep(statusReal.addLayout(lay.Decal({ colour: 'rgba(255, 80, 0, 0.75)', textColour: '#fff' })));

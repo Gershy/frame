@@ -53,23 +53,13 @@
     init: function({ hutId, aboveMsAtResponseTime, ...supArgs }) {
       forms.Foundation.init.call(this, supArgs);
       
-      // GOAL: delta since Above generated "aboveMsAtResponseTime"?
-      // - `firstContactMs` is our earliest timing of server response
-      // - `firstContactMs` is `performance.timing.responseStart`
-      //   This is the time we heard the server's 1st byte
-      // - Without making any assumptions: `now - firstContactMs`
-      // - This estimates LESS than the real latency
-      let nativeNow = +new Date();
-      let firstContactMs = performance.timing.responseStart;
-      let knownLatencyMs = nativeNow - firstContactMs;
+      // Add the clock offset from Above; subtract our best guess at the
+      // time elapsed in transit between Above generating its timestamp
+      // and us receiving it
+      let aboveGeneratedTimestampGuessMs = (performance.timing.requestStart + performance.timing.responseStart) / 2;
+      let msElapsedSinceAboveGeneratedTimestamp = performance.timing.domLoading - aboveGeneratedTimestampGuessMs;
+      this.clockDeltaMs = aboveMsAtResponseTime + msElapsedSinceAboveGeneratedTimestamp;
       
-      // With this value, `new Date() + this.clockDeltaMs` is best guess
-      // at current value of Above's `foundation.getMs()` *right now*
-      // TODO: It's flawed to assume that the delta calculated here is
-      // consistently the latency between server and client... If
-      // anything, it would make sense to constantly update the delta as
-      // a side-effect of other requests.
-      this.clockDeltaMs = nativeNow - (aboveMsAtResponseTime + knownLatencyMs);
       this.hutId = hutId;
       
       // Make sure that refreshes redirect to the same session
@@ -84,7 +74,7 @@
     
     // Sandbox
     queueTask: function(func) { Promise.resolve().then(func); },
-    getMs: function() { return (+new Date()) + this.clockDeltaMs; },
+    getMs: function() { return performance.now() + this.clockDeltaMs; },
     
     // Config
     processArg: function(term, val) { return forms.Foundation.processArg(term, val); },

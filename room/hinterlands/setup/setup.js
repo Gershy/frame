@@ -248,7 +248,9 @@ global.rooms['hinterlands.Setup'] = async foundation => {
       
       // Add all type -> Form mappings
       for (let [ k, v ] of this.recForms) {
-        let addTypeFormFnTmp = hut.addTypeFormFn(k, () => v);
+        // Note that the value mapped to is either some Rec Form or a
+        // Function returning some Rec Form!
+        let addTypeFormFnTmp = hut.addTypeFormFn(k, U.isForm(v) ? () => v : v);
         tmp.endWith(addTypeFormFnTmp);
       }
       

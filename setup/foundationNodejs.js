@@ -7,10 +7,7 @@
   
   let { Foundation, Real, Keep } = U.setup;
   let nativeLibs = {};
-  let native = name => {
-    if (!nativeLibs.has(name)) nativeLibs[name] = require(name);
-    return nativeLibs[name];
-  };
+  let native = name => nativeLibs.has(name) ? nativeLibs[name] : (nativeLibs[name] = require(name));
   
   let FoundationNodejs = U.form({ name: 'FoundationNodejs', has: { Foundation }, props: (forms, Form) => ({
     
@@ -496,7 +493,6 @@
               [ () => ''                  .cut(',', 1),       [ '' ] ],
               [ () => 'a,b,c'             .cut(',', 0),       [ 'a,b,c' ] ]
             ];
-            
             for (let [ fn, exp ] of tests) {
               
               let c = fn();
@@ -509,6 +505,32 @@
                 throw Error(`${fnStr} gave ${JSON.stringify(c)}; expected ${JSON.stringify(exp)}`);
               }
               
+            }
+            
+          },
+          
+          async m => { // (Object|Array).prototype.(all|any)
+            
+            let allTests = [
+              [ { a: 1, b: 2, c: 3, d: 4 },     [],               true ],
+              [ { a: 0, b: 1, c: 2, d: 3 },     [ n => n > -5 ],  true ],
+              [ { a: 0, b: 1, c: 2, d: 3 },     [],               false ],
+              [ { a: 10, b: 11, c: 12, d: 13 }, [ n => n <= 12 ], false ]
+            ];
+            for (let [ obj, args, result ] of allTests) {
+              if (result !== obj.all(...args)) throw Error(`Unexpected result for Object.prototype.all`);
+              if (result !== obj.toArr(v => v).all(...args)) throw Error(`Unexpected result for Array.prototype.all`);
+            }
+            
+            let anyTests = [
+              [ { a: 0, b: null, c: NaN, d: true }, [],               true ],
+              [ { a: 0, b: 1, c: 2, d: 3 },         [ n => n === 1 ], true ],
+              [ { a: 0, b: 0, c: 0, d: 0, e: 0 },   [],               false ],
+              [ { a: 10, b: 11, c: 12, d: 13 },     [ n => n === 0 ], false ]
+            ];
+            for (let [ obj, args, result ] of anyTests) {
+              if (result !== obj.any(...args)) throw Error(`Unexpected result for Object.prototype.any`);
+              if (result !== obj.toArr(v => v).any(...args)) throw Error(`Unexpected result for Array.prototype.all`);
             }
             
           },
@@ -1073,12 +1095,13 @@
           
         ];
         if (this.getArg('debug').has('lowLevelTests')) console.log(`Running ${tests.length} low-level tests...`);
+        let t = this.getMs();
         for (let test of tests) await U.safe(test, err => {
           let name = (test.toString().match(/[/][/](.*)\n/) || { 1: '<unnamed>' })[1].trim();
           console.log(`Test FAIL (${name}):\n${this.formatError(err)}`);
           this.halt();
         });
-        if (this.getArg('debug').has('lowLevelTests')) console.log(`All low-level tests passed!`);
+        if (this.getArg('debug').has('lowLevelTests')) console.log(`All low-level tests passed within ${Math.round(this.getMs() - t)}ms!`);
         
         if (this.getArg('debug').has('args')) {
           console.log(`Computed args:`, await Promise.allObj(this.argProcessors.map((v, k) => this.getArg(k))));
@@ -1086,7 +1109,6 @@
         if (this.getArg('debug').has('rawArgs')) {
           console.log(`Raw args:`, this.origArgs);
         }
-        
         if (this.getArg('debug').has('storage')) {
           let storageKeep = this.getArg('storageKeep');
           console.log(storageKeep
@@ -1094,7 +1116,6 @@
             : `No storage provided; this will be a transient run`
           );
         }
-        
         if (this.getArg('debug').has('residentSetSize')) {
           let mbMult = 1 / (1024 * 1024);
           let fn = () => console.log(`Resident set size: ${(process.memoryUsage().rss * mbMult).toFixed(2)}mb`);
@@ -1109,6 +1130,7 @@
     ready: function() { return this.canSettlePrm; },
     
     // Sandbox
+    getMs: native('perf_hooks').performance.now,
     queueTask: setImmediate,
     getMemUsage: function() {
       let usage1 = process.memoryUsage();

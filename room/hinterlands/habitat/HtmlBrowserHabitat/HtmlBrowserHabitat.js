@@ -96,7 +96,7 @@ global.rooms['hinterlands.habitat.HtmlBrowserHabitat'] = async foundation => {
               <link rel="shortcut icon" type="image/x-icon" href="${urlFn(srcHut, { command: this.prefix + 'icon', reply: '2' })}" />
               <style type="text/css">
                 * { position: relative; }
-                body { opacity: 0; font-size: ${textSize}; transition: opacity 750ms linear; }
+                body { opacity: 0; font-size: ${textSize}; transition: opacity 200ms linear; }
                 body::before {
                   content: ''; display: block; position: absolute;
                   left: 0; right: 0; top: 0; bottom: 0;
@@ -231,7 +231,7 @@ global.rooms['hinterlands.habitat.HtmlBrowserHabitat'] = async foundation => {
           :focus {
             outline: none;
             animation-name: smoothFocus;
-            animation-duration: 400ms;
+            animation-duration: 200ms;
             animation-timing-function: ease-in-out;
             animation-iteration-count: 1;
             animation-fill-mode: forwards;
