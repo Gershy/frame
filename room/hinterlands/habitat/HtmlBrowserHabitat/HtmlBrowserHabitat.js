@@ -48,7 +48,7 @@ global.rooms['hinterlands.habitat.HtmlBrowserHabitat'] = async foundation => {
         let escQt = '\\' + `'`;
         let escEsc = '\\' + '\\';
         let headEvalStr = `try { eval([`;
-        let tailEvalStr = `].join('\\n')); } catch(err) { console.log('Error from wrapped client code:', err); throw err; }`;
+        let tailEvalStr = `].join('\\n')); } catch(err) { console.log('Error from wrapped client code:', err); throw err; }\n//# sourceURL=${roomPcs.join('.')}`;
         
         lines = lines.map(ln => `  '` + ln.replace(/\\/g, escEsc).replace(/'/g, escQt) + `',`);
         let headInd = 0;
@@ -89,8 +89,9 @@ global.rooms['hinterlands.habitat.HtmlBrowserHabitat'] = async foundation => {
         let { textSize='100%' } = msg;
         reply(U.multilineString(`
           <!doctype html>
-          <html spellcheck="false">
+          <html lang="en" spellcheck="false">
             <head>
+              <meta charset="utf-8"/>
               <title>${roomName.split('.').slice(-1)[0].upper()}</title>
               <meta name="viewport" content="width=device-width, initial-scale=1"/>
               <link rel="shortcut icon" type="image/x-icon" href="${urlFn(srcHut, { command: this.prefix + 'icon', reply: '2' })}" />
@@ -327,8 +328,9 @@ global.rooms['hinterlands.habitat.HtmlBrowserHabitat'] = async foundation => {
         }
         reply(U.multilineString(`
           <!doctype html>
-          <html>
+          <html lang="en" spellcheck="false">
             <head>
+              <meta charset="utf-8"/>
               <title>${roomName.split('.').slice(-1)[0].upper()}</title>
               <meta name="viewport" content="width=device-width, initial-scale=1"/>
               <link rel="shortcut icon" type="image/x-icon" href="${urlFn(srcHut, { command: this.prefix + '.icon', reply: '2' })}" />

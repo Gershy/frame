@@ -160,7 +160,7 @@
         let req = new XMLHttpRequest();
         req.timeout = 24 * 60 * 60 * 1000;
         req.open('POST', this.seek('keep', 'urlResource', {}).getUrl(), true);
-        req.setRequestHeader('Content-Type', 'application/json');
+        req.setRequestHeader('Content-Type', 'application/json; charset=utf-8');
         req.send(JSON.stringify(msg));
         
         // Listen for the request to result in a JSON response

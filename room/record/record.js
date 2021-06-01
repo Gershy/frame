@@ -111,7 +111,7 @@ global.rooms.record = async foundation => {
         
       }
     },
-    desc: function() { return `${this.type.name} @ ${this.uid}`; },
+    desc: function() { return `${U.getFormName(this)}('${this.type.name}', ${this.uid})`; },
     mem: function(termTail) {
       // TODO: This is ugly!
       if (termTail[0] !== '.') termTail = `.${termTail}`;

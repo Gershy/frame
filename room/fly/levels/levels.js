@@ -903,7 +903,7 @@ global.rooms['fly.levels'] = async foundation => {
             { type: 'Furler', x: +120, y: +200, spd: -50, swingHz: 0.1, swingAmt: +80, shootDelayMs: 1500, shootProps: { vel: 300 } }
           ]
         },
-        { name: 'bozz', type: 'MomentAhead', terrain: 'plains', dist: 8000, aheadSpd: 100,
+        { name: 'boss', type: 'MomentAhead', terrain: 'plains', dist: 8000, aheadSpd: 100,
           bounds: { total: { w: 800, h: 1000 }, player: { x: 0, y: -150, w: 800, h: 700 } },
           models: [
             

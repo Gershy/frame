@@ -65,11 +65,11 @@ global.rooms['internal.real.htmlBrowser.Axis1D'] = async foundation => {
       },
       render: function(real, domNode) {
         
-        if (this.par.mode === null) {
-          
-          // Children determine their own size in the axis direction, and have 100% perp direction
-          
-        } else if (this.par.mode === 'distribute') {
+        if (real.params.has('order') && U.isForm(real.params.order, Number)) {
+          domNode.style.order = `${real.params.order}`;
+        }
+        
+        if (this.par.mode === 'stretch') {
           
           // Children are all the same size
           domNode.style.flexGrow = '1';

@@ -1,16 +1,15 @@
-// PLAN:
-// [X] Foundation.prototype.getRooms (plural)
-// [ ] Clean up Real/Layout API
-// [ ] Consider Reals - migrate from a static definition? Add support for
-//     predefined Real trees????
-// [ ] Fix!
+// - Realtime games are excellent candidates for multiprocessing
+// - `parFn` is things no Hut can control - the `parFn` is NATURE
+//   - Philosophical implication that shared decisions (e.g. require all
+//     players to ready up; no single player controls starting the game)
+//     are also "nature"
 
 global.rooms['fly'] = async foundation => {
   
   // REAL+LAYOUT:
   // -- Layout is PRM! So no such thing as `someLayout.endWith`
   //    -- This allows some Layouts to subclass Src (useful for
-  //       interactable Layouts)
+  //       interactive Layouts)
   //    -- Real.prototype.addLayout returns a Tmp with a "layout"
   //       property. This separate Tmp is necessary as the Layout isn't
   //       Endable!
@@ -51,7 +50,9 @@ global.rooms['fly'] = async foundation => {
   /// =ABOVE}
   
   let staticKeep = foundation.seek('keep', 'static');
-  let fps = 40; // Server-side ticks per second
+  let fps = 60;           // Server-side ticks per second
+  let spf = 1 / fps;      // Seconds per server-side tick
+  let mspf = 1000 / fps;  // Millis per server-side tick
   let levelStartingDelay = 1000; // Give players this long to unready
   let initialAheadSpd = 100;
   let testAces = [ 'JoustMan', 'GunGirl', 'SlamKid', 'SalvoLad' ];
@@ -209,7 +210,6 @@ global.rooms['fly'] = async foundation => {
     recForms: {
       'fly.level': models.Level,
       'fly.entity': val => {
-        console.log('Get fly.entity for:', val);
         if (!U.isForm(val, Object) || !val.has('type') || !models.has(val.type)) {
           throw Object.assign(Error(`No model available for modelVal`), { modelVal: val });
         }
@@ -262,8 +262,7 @@ global.rooms['fly'] = async foundation => {
           lobby.objVal({ allReadyMark: foundation.getMs() });
           dep(() => lobby.objVal({ allReadyMark: null }));
           
-          let timerSrc = TimerSrc({ ms: levelStartingDelay, num: 1 });
-          dep(timerSrc.route(n => {
+          dep(TimerSrc({ foundation, ms: levelStartingDelay, num: 1 })).route(() => {
             
             let ms = foundation.getMs();
             let levelDef = levels[lobby.getVal('level').name];
@@ -287,18 +286,28 @@ global.rooms['fly'] = async foundation => {
               
             }
             
-          }));
+          });
+          
+        });
+        
+        dep.scp(lobby, 'fly.level', (level, dep) => {
+          
+          let timerSrc = dep(TimerSrc({ foundation, num: Infinity, ms: mspf }));
+          timerSrc.route(async n => {
+            level.update(foundation.getMs(), spf);
+          });
           
         });
         
       });
+      
       /// =ABOVE}
       
     },
     kidFn: async (hut, flyRec, real, dep) => {
       
       let lay = await real.tech.getLayoutForms([
-        'Axis1D', 'Decal', 'Geom', 'Press', 'Scroll', 'Size', 'Text', 'TextInput', 'Image'
+        'Art', 'Axis1D', 'Decal', 'Geom', 'Press', 'Scroll', 'Size', 'Text', 'TextInput', 'Image'
       ]);
       
       let rootReal = realTree.addReal(real, 'root');
@@ -502,8 +511,8 @@ global.rooms['fly'] = async foundation => {
               let teamPlayerStatsDamageReal = teamPlayerStatsReal.addReal('lobbyTeamPlayerStatsDamage', [ statTextLayout ]);
               let teamPlayerStatsDeathsReal = teamPlayerStatsReal.addReal('lobbyTeamPlayerStatsDeaths', [ statTextLayout ]);
               dep(teamPlayer.getValSrc().route(({ score: damage, deaths }) => {
-                teamPlayerStatsDamageReal.mod({ text: `damage: ${damage}` });
-                teamPlayerStatsDeathsReal.mod({ text: `deaths: ${deaths}` });
+                teamPlayerStatsDamageReal.mod({ text: `damage: ${Math.round(damage)}` });
+                teamPlayerStatsDeathsReal.mod({ text: `deaths: ${Math.round(deaths)}` });
               }));
               
               // Allow the player to choose their model from a list
@@ -560,17 +569,183 @@ global.rooms['fly'] = async foundation => {
               dep(statusReal.addLayout(lay.Decal({ colour: 'rgba(0, 0, 0, 0.1)' })));
             });
             dep.scp(statusChooser.srcs.starting, (waiting, dep) => {
-              let timerSrc = dep(TimerSrc({ ms: 500, num: Infinity }));
-              dep(timerSrc.route(() => {
+              
+              dep(TimerSrc({ foundation, ms: 500, num: Infinity })).route(() => {
                 let ms = levelStartingDelay - (foundation.getMs() - myLobby.getVal('allReadyMark'));
                 statusReal.mod({ text: `Starting in ${Math.ceil(ms / 1000)}s...` });
-              }));
+              });
               dep(statusReal.addLayout(lay.Decal({ colour: 'rgba(255, 80, 0, 0.75)', textColour: '#fff' })));
+              
             });
             
           });
           dep.scp(inLevelChooser.srcs.onn, (level, dep) => {
-            console.log(`I (${myPlayer.getVal('term')}) IN LEVEL ${level.desc()}`);
+            
+            let withLevelPlayerEntity = (levelPlayerEntity, dep) => {
+              
+              // levelPlayerEntity := (level+player)+entity
+              let myEntity = levelPlayerEntity.mems['fly.entity'];
+              
+              console.log(`Player ${myPlayer.getVal('term')} controls`, myEntity.desc());
+              
+              let levelReal = dep(rootReal.addReal('level', [
+                lay.Axis1D({ axis: 'x', dir: '+' }),
+                lay.Geom({ w: '100%', h: '100%' })
+              ]));
+              let levelInfoL = levelReal.addReal('levelInfo', [
+                lay.Geom({ w: '10%', h: '100%' }),
+                lay.Axis1D({ axis: 'y', dir: '+', mode: 'compactCenter' }),
+                lay.Decal({ colour: 'rgba(0, 0, 0, 0.8)' }),
+              ], { order: 0 });
+              let levelInfoR = levelReal.addReal('levelInfo', [
+                lay.Geom({ w: '10%', h: '100%' }),
+                lay.Axis1D({ axis: 'y', dir: '+', mode: 'compactCenter' }),
+                lay.Decal({ colour: 'rgba(0, 0, 0, 0.8)' })
+              ], { order: 2 });
+              
+              let gameReal = levelReal.addReal('game', [
+                lay.Geom({ w: '80%', h: '100%' }),
+                lay.Art({ pixelCount: [ 800, 1000 ] })
+              ]);
+              
+              let level = levelPlayerEntity.mems['fly.levelPlayer'].mems['fly.level'];
+              let entitySrc = level.relSrc('fly.entity');
+              
+              let spriteSrc = level.relSrc('fly.sprite');
+              let lastMs = [ level.v('ms'), foundation.getMs(), level.v('y') ];
+              let pixelDims = { w: 800, h: 1000, hw: 400, hh: 500 };
+              let fadeXPanVal = util.fadeVal(0, 0.19);
+              let fadeYPanVal = util.fadeVal(0, 0.19);
+              gameReal.mod({ animationFn: draw => draw.initFrameCen('rgba(220, 220, 255, 1)', () => {
+                
+                let ud = {
+                  ms: level.v('ms'),
+                  spf: (level.v('ms') - lastMs[0]) * 0.001,
+                  outcome: level.v('outcome'),
+                  level,
+                  myEntity,
+                  entities: entitySrc.vals.toObj(r => [ r.uid, r ]),
+                  //createRec: level.flyHut.createRec.bind(this, flyHut),
+                  bounds: models.Level.getLevelBounds(level)
+                };
+                
+                if (ud.ms === lastMs[0]) {
+                  
+                  // Render before update; compensate for silky smoothness
+                  let msExtra = foundation.getMs() - lastMs[1];
+                  ud.ms = lastMs[0] + msExtra;
+                  
+                  // Spoof the level as having inched forward a tiny bit
+                  let addY = level.v('aheadSpd') * msExtra * 0.001;
+                  
+                  // Extrapolate aheadDist
+                  level.v('y', lastMs[2] + addY);
+                  ud.bounds = models.Level.getLevelBounds(level);
+                  
+                } else {
+                  
+                  // Remember the timing of this latest frame
+                  lastMs = [ ud.ms, foundation.getMs(), level.v('y') ];
+                  
+                }
+                
+                let { total: tb, player: pb } = ud.bounds;
+                let [ mySprite=null ] = entitySrc.vals;
+                
+                let visiMult = Math.min(tb.w / pixelDims.w, tb.h / pixelDims.h) * level.getVal('visiMult');
+                let desiredTrn = { x: 0, y: 0 };
+                let scaleAmt = 1 / visiMult;
+                
+                if (mySprite) {
+                  
+                  let { x, y } = mySprite.getVal();
+                  
+                  // Percentage of horz/vert dist travelled
+                  let xAmt = (x - pb.x) / (pb.w * 0.5);
+                  let yAmt = (y - pb.y) / (pb.h * 0.5);
+                  
+                  // If place camera at `+maxFocusX` or `-maxFocusX`, any
+                  // further right/left and we'll see dead areas
+                  let seeDistX = pixelDims.hw * visiMult;
+                  let seeDistY = pixelDims.hh * visiMult;
+                  let maxFocusX = tb.w * 0.5 - seeDistX;
+                  let maxFocusY = tb.h * 0.5 - seeDistY;
+                  desiredTrn = { x: maxFocusX * xAmt, y: maxFocusY * yAmt };
+                  
+                  ud.bounds.visible = {
+                    form: 'rect',
+                    x: desiredTrn.x, y: desiredTrn.y,
+                    w: seeDistX * 2, h: seeDistY * 2,
+                    l: desiredTrn.x - seeDistX, r: desiredTrn.x + seeDistX,
+                    b: desiredTrn.y - seeDistY, t: desiredTrn.y + seeDistY
+                  };
+                  
+                } else {
+                  
+                  ud.bounds.visible = ud.bounds.total;
+                  
+                }
+                
+                // TODO: Don't follow Ace upon victory!!
+                draw.scl(scaleAmt, scaleAmt);
+                draw.trn(0, -ud.bounds.total.y);
+                draw.trn(-fadeXPanVal.to(desiredTrn.x), -fadeYPanVal.to(desiredTrn.y));
+                
+                let renders = [];
+                for (let sprite of spriteSrc.vals) {
+                  let entity = sprite.mems['fly.entity'];
+                  renders.push({ priority: entity.renderPriority(), entity });
+                }
+                
+                for (let { entity } of renders.sort((v1, v2) => v2.priority - v1.priority)) {
+                  entity.render(ud, draw);
+                }
+                
+                draw.rectCen(tb.x, tb.y, tb.w - 4, tb.h - 4, { strokeStyle: 'rgba(0, 255, 0, 0.1)', lineWidth: 4 });
+                draw.rectCen(pb.x, pb.y, pb.w - 4, pb.h - 4, { strokeStyle: 'rgba(0, 120, 0, 0.1)', lineWidth: 4 });
+                
+              })});
+              
+              // A: 65, D: 68, W: 87, S: 83, <: 188, >: 190
+              let keyNums = [ 65, 68, 87, 83, 188, 190 ];
+              let keyMap = { l: 65, r: 68, u: 87, d: 83, a1: 188, a2: 190 };
+              let keyAct = dep(hut.enableAction('fly.control', ({ keyVal }, { ms }) => {
+                
+                let keys = keyNums.map((n, i) => (keyVal & (1 << i)) >> i);
+                if (keys[0] !== myEntity.controls.l[0]) myEntity.controls.l = [ keys[0], ms ];
+                if (keys[1] !== myEntity.controls.r[1]) myEntity.controls.r = [ keys[1], ms ];
+                if (keys[2] !== myEntity.controls.u[2]) myEntity.controls.u = [ keys[2], ms ];
+                if (keys[3] !== myEntity.controls.d[3]) myEntity.controls.d = [ keys[3], ms ];
+                if (keys[4] !== myEntity.controls.a1[4]) myEntity.controls.a1 = [ keys[4], ms ];
+                if (keys[5] !== myEntity.controls.a2[5]) myEntity.controls.a2 = [ keys[5], ms ];
+                
+              }));
+              dep(gameReal.getLayout(lay.Art).keysSrc.route(keys => {
+                
+                let keyVal = 0;
+                for (let i = 0; i < keyNums.length; i++) keyVal += keys.has(keyNums[i]) ? (1 << i) : 0;
+                keyAct.act({ keyVal });
+                
+              }));
+              
+              gameReal.getLayout(lay.Art).keysSrc.route(keys => {});
+              
+            };
+            
+            // Ahhhh need to follow these manually :( since the render
+            // function looks at an instantaneous snapshot of these sets
+            dep.scp(level, 'fly.entity', (entity, dep) => {});
+            dep.scp(level, 'fly.sprite', (entity, dep) => {});
+            
+            // Need to hit the LevelPlayer through the Hut, not the
+            // Level, to ensure that Huts only have access to their own
+            // LevelPlayers!
+            dep.scp(hut, 'fly.hutPlayer', (hutPlayer, dep) => {
+              dep.scp(hutPlayer.mems['fly.player'], 'fly.levelPlayer', (levelPlayer, dep) => {
+                dep.scp(levelPlayer, 'fly.levelPlayerEntity', withLevelPlayerEntity);
+              });
+            });
+            
           });
           
         });

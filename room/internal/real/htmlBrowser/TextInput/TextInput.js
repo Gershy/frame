@@ -36,12 +36,6 @@ global.rooms['internal.real.htmlBrowser.TextInput'] = async foundation => {
       if (this.prompt) input.setAttribute('placeholder', this.prompt);
       
       let domNode = real.domNode;
-      if (![ 'absolute', 'relative' ].has(domNode.style.position)) {
-        let origPos = domNode.style.position;
-        domNode.style.position = 'relative';
-        tmp.endWith(() => domNode.style.position = origPos);
-      }
-      
       domNode.appendChild(input);
       tmp.endWith(() => input.remove());
       

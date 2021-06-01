@@ -1,6 +1,7 @@
 global.rooms['fly.models'] = async foundation => {
   
   let { Rec } = await foundation.getRoom('record');
+  let levels = await foundation.getRoom('fly.levels');
   
   let util = {
     paragraph: str => str.split('\n').map(v => v.trim() || C.skip).join(' '),
@@ -118,43 +119,44 @@ global.rooms['fly.models'] = async foundation => {
       
       if (!val) throw Error(`${U.getFormName(this)} missing "val" param`);
       
-      // Move properties from `props` to `syncProps` as appropriate
+      // Get props, and list of sync prop names
       let props = this.initProps(val);
-      
       let sProps = this.initSyncs();
       if (Set(sProps).size !== sProps.length) throw Error(`${U.getFormName(this)} defines sync properties multiple times (potentially through polymorphism)`);
       for (let spn of sProps) if (!props.has(spn)) throw Error(`${U.getFormName(this)} missing sync prop "${spn}"`);
       
+      // Move properties from `props` to `syncProps` as appropriate
       let syncProps = {};
-      for (let spn of sProps) {
-        syncProps[spn] = props[spn]; delete props[spn];
-      }
+      for (let spn of sProps) { syncProps[spn] = props[spn]; delete props[spn]; }
       
       // Attach all local properties
-      for (let localPropName in props) this[localPropName] = props[localPropName];
+      Object.assign(this, props);
       
       // Initialize as Rec using sync properties
       forms.Rec.init.call(this, rt, uid, mems, { ...syncProps, type: U.getFormName(this) });
       
     },
     v: function(p, v=C.skip) {
+      
+      let val = this.getVal();
+      
       if (v === C.skip) {       // Get
         
-        if (this.val.has(p))              return this.val[p];
+        if (val.has(p))                   return val[p];
         else if (({}).has.call(this, p))  return this[p];
         else                              throw Error(`${U.getFormName(this)} has no v prop "${p}"`);
         
       } else {                  // Set
         
-        if (U.isForm(v, Function)) v = v(this.val.has(p) ? this.val[p] : this[p]);
+        if (U.isForm(v, Function)) v = v(val.has(p) ? val[p] : this[p]);
         
-        if (this.val.has(p))              this.objVal({ [p]: v });
+        if (val.has(p))                   this.objVal({ [p]: v });
         else if (({}).has.call(this, p))  this[p] = v;
         else                              throw Error(`${U.getFormName(this)} has no v prop "${p}"`);
         
       }
     },
-    r: function(ud, p) { return this.v(p) || ud.entities.def(this.v(`${p}Uid`)); },
+    rv: function(ud, p) { return this.v(p) || ud.entities.seek(this.v(`${p}Uid`)).val }, //.def(this.v(`${p}Uid`)); },
     getAgeMs: function(ud) { return ud.ms - this.v('ms'); },
     getParent: function(ud) { return ud.level; },
     getRelVal: C.noFn('getRelVal'), // Returns current state, and any events (e.g. births) which occurred during the time delta
@@ -217,6 +219,14 @@ global.rooms['fly.models'] = async foundation => {
       
       let { ud: { ms }, aMs=ms, x, y, ax=x, ay=y, vel=100, acl=0 } = val;
       
+      // "nx" and "ny" specify normalized vector motion
+      // "tx" and "ty" specify "targetted" motion; the Mover will move
+      //   through the point (tx, ty)
+      // "ang" and "dist" specify angular motion
+      // Note that "ax" and "ay" are "anchor" coords; they store the
+      // last location jumped to by this Mover before continuous motion
+      // resumed
+      
       let calc = null;
       if (val.has('nx') && val.has('ny'))       calc = () => val.slice('nx', 'ny', 'dist');
       else if (val.has('tx') && val.has('ty'))  calc = Form.carteParams.bind(null, val.tx, val.ty);
@@ -227,25 +237,22 @@ global.rooms['fly.models'] = async foundation => {
       return {}.gain(...arr, { aMs, ax, ay, vel, acl, nx, ny, dist, ang });
       
     }),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'aMs', 'ax', 'ay', 'nx', 'ny', 'dist', 'vel', 'acl' ].concat(...arr)),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'aMs', 'ax', 'ay', 'nx', 'ny', 'dist', 'vel', 'acl' ].gain(...arr)),
     getRelVal: function(ud, ms=ud.ms) {
       
-      let aMs = this.v('aMs');
       let ax = this.v('ax'); let ay = this.v('ay');
       let nx = this.v('nx'); let ny = this.v('ny');
       let vel = this.v('vel');
-      let acl = this.v('acl');
-      let dist = this.v('dist');
       
       // Seconds the most recent anchor move has lasted
-      let t = (ms - aMs) * 0.001;
+      let t = (ms - this.v('aMs')) * 0.001;
       
       // Non-null `dist` creates a cap on the dist
+      let acl = this.v('acl');
+      let dist = this.v('dist');
       let d = vel * t + acl * 0.5 * t * t; // Distance based on t, vel, acl
       if (dist !== null && d > dist) d = dist;
       
-      let x = ax + nx * d;
-      let y = ay + ny * d;
       return { x: ax + nx * d, y: ay + ny * d };
       
     },
@@ -299,7 +306,7 @@ global.rooms['fly.models'] = async foundation => {
       let { ud: { ms }, ax=null, ay=null, aMs=ms, forces=[] } = val;
       return {}.gain(...arr, { ax, ay, aMs, forces });
     }),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'ax', 'ay', 'aMs', 'forces' ].concat(...arr)),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'ax', 'ay', 'aMs', 'forces' ].gain(...arr)),
     calcForceState: function(ud, force, durMs=ud.ms - force[0]) {
       
       let t = durMs * 0.001;
@@ -372,6 +379,9 @@ global.rooms['fly.models'] = async foundation => {
   // UTIL
   let Bullet = U.form({ name: 'Bullet', props: (forms, Form) => ({
     
+    // An abstract bullet; has a bound and logic for dealing damage but
+    // no implementation of motion
+    
     initProps: forms.allArr('initProps', (i, arr, val) => {
       let { team, owner=null, dmg=1, pDmg=[0,0], bound={ form: 'circle', r: 4 }, colour='rgba(0, 0, 0, 0.75)' } = val;
       /// {ABOVE=
@@ -380,7 +390,7 @@ global.rooms['fly.models'] = async foundation => {
       if (!U.isForm(bound, Object) || !bound.has('form') || !U.isForm(bound.form, String)) throw Error(`Bad bound! (${U.getFormName(bound)}, ${JSON.stringify(bound)})`);
       return {}.gain(...arr, { team, owner, dmg, pDmg, bound, colour });
     }),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'bound', 'colour' ].concat(...arr)),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'bound', 'colour' ].gain(...arr)),
     init: C.noFn('init'),
     getCollideResult: function(ud, tail) {
       if (!U.hasForm(tail, Mortal)) return;
@@ -405,11 +415,13 @@ global.rooms['fly.models'] = async foundation => {
   })});
   let MBullet = U.form({ name: 'MBullet', has: { Entity, Mover, Bullet }, props: (forms, Form) => ({
     
+    // A moving bullet
+    
     $render: (draw, ud, { x, y, r, team }) => {
       draw.circ(x, y, r, { fillStyle: Form.parents.Bullet.getColour(team) });
     },
     initProps: forms.allArr('initProps', (i, arr, val) => ({}).gain(...arr)),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [].concat(...arr)),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [].gain(...arr)),
     isAlive: function(ud) {
       return true
         && forms.Entity.isAlive.call(this, ud)
@@ -444,12 +456,12 @@ global.rooms['fly.models'] = async foundation => {
         controls: [ 'l', 'r', 'd', 'u', 'a1', 'a2' ].toObj(k => [ k, [ 0, ms ] ])
       });
     }),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'invulnMark', 'name' ].concat(...arr)),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'invulnMark', 'name' ].gain(...arr)),
     getRelVal: function(ud) {
       let { x, y } = forms.Physical.getRelVal.call(this, ud);
       
       let bounded = false;
-      if (!ud.outcome !== 'win') {
+      if (ud.outcome !== 'win') {
         let pb = ud.bounds.player;
         if (x < pb.l) { x = pb.l; bounded = true; }
         if (x > pb.r) { x = pb.r; bounded = true; }
@@ -462,8 +474,6 @@ global.rooms['fly.models'] = async foundation => {
     getTeam: function() { return +1; },
     getStepResult: function(ud) {
       
-      let { ms, spf, bounds, outcome } = ud;
-      
       if (!this.isAlive(ud)) {
         return { tangibility: {
           bound: { ...Form.bound, x: -7070707070, y: -7070707070 },
@@ -471,6 +481,8 @@ global.rooms['fly.models'] = async foundation => {
           sides: []
         }};
       }
+      
+      let { ms, spf, bounds, outcome } = ud;
       
       if (outcome === 'win') {
         if (!this.winTime) this.winTime = ms;
@@ -557,23 +569,40 @@ global.rooms['fly.models'] = async foundation => {
     
     $w1ChargePunishSlow: 0.4, $w1ChargePunishMs: 2000,
     $w1Charge1Ms: 750, $w1Charge2Ms: 1800, $w1Charge3Ms: 5000, // How many millis of charging for various jousts
-    $w1Charge3Slow: 0.58,
+    $w1Charge3Slow: 0.59, $w1Charge3Duration: 3000,
     $w2Delay: 3500, $w2DashSpeed: 500, $w2OrbDps: 25, $w2DurationMs: 300,
     
     $imageKeep: foundation.seek('keep', 'static', [ 'room', 'fly', 'resource', 'aceJoust.png' ]),
     
-    initProps: forms.allArr('initProps', (i, arr) => ({}).gain(...arr, { w1Mark: null, w1State: 0, w2Mark: null })),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'w1Mark', 'w1State', 'w2Mark' ].concat(...arr)),
+    initProps: forms.allArr('initProps', (i, arr) => ({}).gain(...arr, { w1Mark: null, w1State: 0, w2Mark: null, joustMark: null, joustReloadMark: null })),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'w1Mark', 'w1State', 'w2Mark' ].gain(...arr)),
     
     aceUpdate: function(ud, { cx, cy, a1, a2 }) {
       
       let { aheadDist, ms, spf } = ud;
       
+      if (this.v('joustMark')) {
+        if (ms > this.v('joustMark') + Form.w1Charge3Duration) this.v('joustMark', null);
+        if (this.v('joustMark')) {
+          let { x, y } = this.getRelVal(ud);
+          
+          let rateMs = 1000 * JoustManLaserJoust.bound.h / JoustManLaserJoust.vel;
+          while (ms > this.v('joustReloadMark') + rateMs) {
+            let spawnMs = this.v('joustReloadMark') + rateMs;
+            ud.spawnEntity({ type: 'JoustManLaserJoust', owner: this, team: 'ace', ax: x, ay: y, dmg: 0.75, ang: 0, aMs: spawnMs });
+            this.v('joustReloadMark', mark => mark + rateMs);
+          }
+          
+        }
+      }
+      
       // Activate weapon 1
       if (a1) {
         
+        // Mark the moment weapon 1 was held
         if (!this.v('w1Mark')) this.v('w1Mark', ms);
         
+        // Weapon 1 state depends on how long held
         let duration = ms - this.v('w1Mark');
         if (duration > Form.w1Charge3Ms)      this.v('w1State', 3);
         else if (duration > Form.w1Charge2Ms) this.v('w1State', 2);
@@ -594,7 +623,7 @@ global.rooms['fly.models'] = async foundation => {
           
           let { x, y } = this.getRelVal(ud);
           let incAng = 0.018;
-          let args = { owner: this, team: 'ace', ax: x, ay: y, vel: 350, dmg: 0.75, lsMs: 700, bound: { form: 'circle', r: 6 } };
+          let args = { owner: this, team: 'ace', ax: x, ay: y, dmg: 0.75, lsMs: 700, vel: 350, bound: { form: 'circle', r: 6 } };
           for (let ang of util.incCen(9, incAng)) ud.spawnEntity({ type: 'JoustManBullet', ...args, ang });
           
           this.v('effects').add({ mark: ms + 500, type: 'spdMult', spdMult: 0.5 });
@@ -616,8 +645,10 @@ global.rooms['fly.models'] = async foundation => {
         } else if (this.v('w1State') === 3) {
           
           // Weapon 1 act 3: BIG LASER
-          ud.spawnEntity({ type: 'JoustManLaserVert', joustMan: this, team: 'ace', lsMs: 3000 });
-          this.v('effects').add({ mark: ms + 3000, type: 'spdMult', spdMult: Form.w1Charge3Slow });
+          //ud.spawnEntity({ type: 'JoustManLaserVert', joustMan: this, team: 'ace', lsMs: Form.w1Charge3Duration });
+          this.v('joustMark', ms);
+          this.v('joustReloadMark', ms);
+          this.v('effects').add({ mark: ms + Form.w1Charge3Duration, type: 'spdMult', spdMult: Form.w1Charge3Slow });
           
         }
         
@@ -701,7 +732,7 @@ global.rooms['fly.models'] = async foundation => {
       w2Mark: ms,                     // Marks when w2 ends
       w2EffectiveShootDuration: null
     })),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'w2ReadyMark' ].concat(...arr)),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'w2ReadyMark' ].gain(...arr)),
     getAngForShootDuration: function(ms) {
       
       let prevMs = 0;
@@ -842,14 +873,17 @@ global.rooms['fly.models'] = async foundation => {
       let { ud: { ms }, w1Mark=ms, w1StartMark=null, w2Mark=ms, w2StartMark=null, slamSpd=Form.slamSpd } = val;
       return {}.gain(...arr, { w1Mark, w1StartMark, w2Mark, w2StartMark, slamSpd });
     }),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [].concat(...arr)),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [].gain(...arr)),
     aceUpdate: function(ud, { a1, a2 }) {
       
       let { aheadDist, ms, spf } = ud;
       let forces = [];
       
       // Slam Kid is symmetrical; do the same thing in two directions:
-      let dirs = [ [ -1, a1, 'w1Mark', 'w1StartMark' ], [ +1, a2, 'w2Mark', 'w2StartMark' ] ];
+      let dirs = [
+        [ -1, a1, 'w1Mark', 'w1StartMark' ],
+        [ +1, a2, 'w2Mark', 'w2StartMark' ]
+      ];
       for (let [ mult, act, wMark, wMarkStart ] of dirs) {
         
         if (act && ms > this.v(wMark) && (!this.v(wMarkStart) || ms < this.v(wMarkStart) + Form.slamCharge3Ms)) {
@@ -858,7 +892,7 @@ global.rooms['fly.models'] = async foundation => {
             this.v(wMarkStart, ms);
             
             let inc1 = 10; let inc2 = 20;
-            let args = { slamKid: this, dir: mult };
+            let args = { slamKid: this, team: 'ace', dir: mult };
             ud.spawnEntity({ type: 'SlamKidSlammer', ...args, xOff: +inc2 + (mult * 20), yOff: (-inc2 * mult) + 16 });
             ud.spawnEntity({ type: 'SlamKidSlammer', ...args, xOff: +inc1 + (mult * 20), yOff: (-inc1 * mult) + 16 });
             ud.spawnEntity({ type: 'SlamKidSlammer', ...args, xOff:     0 + (mult * 20), yOff: (    0 * mult) + 16 });
@@ -941,7 +975,7 @@ global.rooms['fly.models'] = async foundation => {
     
     $comboDelayMs: 800, $comboPunishDelayMs: 1000,
     $decampDelayMs: 1200, $decampDurationMs: 350, $decampSpdMult: 0.5, $decampSpd: 430,
-    $diveDelayMs: 600, $diveMs: 700, $diveSpdMult: 0.58, $diveFwdMult: 450, $diveBombLsMs: 1200,
+    $diveDelayMs: 600, $diveMs: 700, $diveSpdMult: 0.60, $diveFwdMult: 450, $diveBombLsMs: 1200,
     $missileDelayMs: 600, $missileDmg: 0.5, $missilePDmg:  [0.1,2],
     $suppressDelayMs: 600, $suppressDmg: 0.4,
     
@@ -966,7 +1000,7 @@ global.rooms['fly.models'] = async foundation => {
         '><>': i.comboSuppress.bind(i, +1)
       }
     })),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'readyMark', 'combo' ].concat(...arr)),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'readyMark', 'combo' ].gain(...arr)),
     comboDecamp: function(dir, ud) {
       
       this.v('invulnMark', v => Math.max(v, ud.ms + Form.decampDurationMs));
@@ -993,6 +1027,9 @@ global.rooms['fly.models'] = async foundation => {
           ud.spawnEntity({ ...missileArgs, ang: dir * 0.109, vel: 140, lsMs: Form.diveBombLsMs * 1.010, kaboomArgs: { dps: 4.75, lsMs: 1900 } });
           ud.spawnEntity({ ...missileArgs, ang: dir * 0.078, vel: 158, lsMs: Form.diveBombLsMs * 1.000, kaboomArgs: { dps: 4.75, lsMs: 2300 } });
           ud.spawnEntity({ ...missileArgs, ang: dir * 0.030, vel: 148, lsMs: Form.diveBombLsMs * 0.989, kaboomArgs: { dps: 4.75, lsMs: 2150 } });
+          
+          this.v('effects').add({ mark: ud.ms + 150, type: 'force', force: [ ud.ms, 'vel', 0, -220 ] });
+          
         }
       });
       return { birth: [], delayMs: Form.diveDelayMs };
@@ -1086,7 +1123,7 @@ global.rooms['fly.models'] = async foundation => {
         draw.rectCen(x, dispY, comboW + 4, indSize + 4, { strokeStyle: 'rgba(80, 80, 80, 0.4)', lineWidth: 1 });
         
         let dispX = x - (comboW >> 1);
-        for (c of combo) {
+        for (let c of combo) {
           draw.path({ fillStyle: '#000000' }, ({ jump, draw }) => {
             if (c === '<') {
               jump(dispX + indSize, dispY - hIndSize);
@@ -1122,12 +1159,12 @@ global.rooms['fly.models'] = async foundation => {
       let { xOff, yOff, r, dps, joustMan=null, joustManUid=joustMan.uid, team } = val;
       return {}.gain(...arr, { xOff, yOff, r, dps, joustMan, joustManUid, team });
     }),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'xOff', 'yOff', 'r', 'joustManUid' ].concat(...arr)),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'xOff', 'yOff', 'r', 'joustManUid' ].gain(...arr)),
     getCollideResult: function(ud, tail) {
-      if (U.hasForm(tail, Mortal)) tail.takeDamage(ud, this.r(ud, 'joustMan'), this.dps * ud.spf);
+      if (U.hasForm(tail, Mortal)) tail.takeDamage(ud, this.rv(ud, 'joustMan'), this.dps * ud.spf);
     },
     getRelVal: function(ud) {
-      let { x, y } = this.r(ud, 'joustMan').getRelVal(ud);
+      let { x, y } = this.rv(ud, 'joustMan').getRelVal(ud);
       return { x: x + this.v('xOff'), y: y + this.v('yOff') };
     },
     getStepResult: function(ud) {
@@ -1141,7 +1178,7 @@ global.rooms['fly.models'] = async foundation => {
     isAlive: function(ud) {
       return true
         && forms.Entity.isAlive.call(this, ud)
-        && this.r(ud, 'joustMan').isAlive(ud);
+        && this.rv(ud, 'joustMan').isAlive(ud);
     },
     render: function(ud, draw) {
       let { x, y } = this.getAbsVal(ud);
@@ -1159,12 +1196,12 @@ global.rooms['fly.models'] = async foundation => {
       let { joustMan=null, joustManUid=joustMan.uid, team } = val;
       return {}.gain(...arr, { joustMan, joustManUid, team });
     }),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'joustManUid' ].concat(...arr)),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'joustManUid' ].gain(...arr)),
     getCollideResult: function(ud, tail) {
-      if (U.hasForm(tail, Mortal)) tail.takeDamage(ud, this.r(ud, 'joustMan'), Form.dps * ud.spf);
+      if (U.hasForm(tail, Mortal)) tail.takeDamage(ud, this.rv(ud, 'joustMan'), Form.dps * ud.spf);
     },
     getRelVal: function(ud) {
-      let { x, y } = this.r(ud, 'joustMan').getRelVal(ud);
+      let { x, y } = this.rv(ud, 'joustMan').getRelVal(ud);
       return { x, y: y + 8 + Form.h * 0.5 };
     },
     getStepResult: function(ud) {
@@ -1178,7 +1215,7 @@ global.rooms['fly.models'] = async foundation => {
     isAlive: function(ud) {
       return true
         && forms.Entity.isAlive.call(this, ud)
-        && this.r(ud, 'joustMan').isAlive(ud);
+        && this.rv(ud, 'joustMan').isAlive(ud);
     },
     render: function (ud, draw) {
       let { x, y } = this.getAbsVal(ud);
@@ -1186,6 +1223,17 @@ global.rooms['fly.models'] = async foundation => {
       draw.rectCen(x, y, Form.w * 0.6, Form.h, { fillStyle: 'rgba(255, 255, 255, 0.4)' });
     }
     
+  })});
+  let JoustManLaserJoust = U.form({ name: 'JoustManLaserJoust', has: { MBullet }, props: (forms, Form) => ({
+    $bound: { form: 'rect', w: 34, h: 20 },
+    $vel: 800,
+    $lsMs: 650,
+    initProps: forms.allArr('initProps', (i, arr) => ({}).gain(...arr, { bound: Form.bound, vel: Form.vel, lsMs: Form.lsMs, ang: 0 })),
+    render: function(ud, draw) {
+      let { x, y } = this.getAbsVal(ud);
+      draw.rectCen(x, y, Form.bound.w, Form.bound.h, { fillStyle: 'rgba(0, 255, 255, 0.64)' });
+      draw.rectCen(x, y, Form.bound.w * 0.6, Form.bound.h, { fillStyle: 'rgba(255, 255, 255, 0.4)' });
+    }
   })});
   let JoustManLaserHorz = U.form({ name: 'JoustManLaserHorz', has: { Entity }, props: (forms, Form) => ({
     
@@ -1195,12 +1243,12 @@ global.rooms['fly.models'] = async foundation => {
       let { joustMan=null, joustManUid=joustMan.uid, team, dir } = val;
       return {}.gain(...arr, { joustMan, joustManUid, team, dir });
     }),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'joustManUid', 'dir' ].concat(...arr)),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'joustManUid', 'dir' ].gain(...arr)),
     getCollideResult: function(ud, tail) {
-      if (U.hasForm(tail, Mortal)) tail.takeDamage(ud, this.r(ud, 'joustMan'), Form.dps * ud.spf);
+      if (U.hasForm(tail, Mortal)) tail.takeDamage(ud, this.rv(ud, 'joustMan'), Form.dps * ud.spf);
     },
     getRelVal: function(ud) {
-      let { x, y } = this.r(ud, 'joustMan').getRelVal(ud);
+      let { x, y } = this.rv(ud, 'joustMan').getRelVal(ud);
       return { x: x + Form.w * -0.5 * this.v('dir'), y };
     },
     getStepResult: function(ud) {
@@ -1214,10 +1262,10 @@ global.rooms['fly.models'] = async foundation => {
     isAlive: function(ud) {
       return true
         && forms.Entity.isAlive.call(this, ud)
-        && this.r(ud, 'joustMan').isAlive(ud);
+        && this.rv(ud, 'joustMan').isAlive(ud);
     },
     render: function (ud, draw) {
-      let { x: jx, y: jy } = this.r(ud, 'joustMan').getAbsVal(ud);
+      let { x: jx, y: jy } = this.rv(ud, 'joustMan').getAbsVal(ud);
       let { x, y } = this.getAbsVal(ud);
       draw.circ(jx, jy, 20, { fillStyle: 'rgba(0, 255, 255, 0.5)' });
       draw.rectCen(x, y, Form.w, Form.h, { fillStyle: 'rgba(0, 255, 255, 0.65)' });
@@ -1236,15 +1284,15 @@ global.rooms['fly.models'] = async foundation => {
       let { team, slamKid=null, slamKidUid=slamKid.uid, dir, xOff, yOff, integrity=1 } = val;
       return {}.gain(...arr, { team, slamKid, slamKidUid, dir, xOff, yOff, integrity });
     }),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'slamKidUid', 'xOff', 'yOff' ].concat(...arr)),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'slamKidUid', 'xOff', 'yOff' ].gain(...arr)),
     getCollideResult: function(ud, tail) {
       if (U.hasForm(tail, Mortal)) {
-        tail.takeDamage(ud, this.r(ud, 'slamKid'), Form.dmg);
+        tail.takeDamage(ud, this.rv(ud, 'slamKid'), Form.dmg);
         this.v('integrity', 0);
       }
     },
     getRelVal: function(ud) {
-      let { x, y } = this.r(ud, 'slamKid').getRelVal(ud);
+      let { x, y } = this.rv(ud, 'slamKid').getRelVal(ud);
       return { x: x + this.v('xOff'), y: y + this.v('yOff') };
     },
     getStepResult: function(ud) {
@@ -1257,7 +1305,7 @@ global.rooms['fly.models'] = async foundation => {
     },
     isAlive: function(ud) {
       if (this.v('integrity') <= 0) return false;
-      let sk = this.r(ud, 'slamKid');
+      let sk = this.rv(ud, 'slamKid');
       return true
         && sk.isAlive(ud) // SlamKid is alive
         && sk.v((this.v('dir') === -1) ? 'w1StartMark' : 'w2StartMark') // Slammer is held
@@ -1280,7 +1328,7 @@ global.rooms['fly.models'] = async foundation => {
       let { team=null, salvoLad=null, kaboomArgs={} } = val;
       return {}.gain(...arr, { team, salvoLad, kaboomArgs });
     }),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [].concat(...arr)),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [].gain(...arr)),
     getStepResult: function(ud) {
       let { x, y } = this.getAbsVal(ud);
       return { tangibility: {
@@ -1292,7 +1340,7 @@ global.rooms['fly.models'] = async foundation => {
     getDieResult: function(ud) {
       let { x, y } = this.getRelVal(ud);
       let iy = ud.bounds.total.y;
-      ud.spawnEntity({ type: 'SalvoLadKaboom', team: this.v('team'), salvoLad: this.r(ud, 'salvoLad'), ax: x, ay: y, iy, ...this.kaboomArgs });
+      ud.spawnEntity({ type: 'SalvoLadKaboom', team: this.v('team'), salvoLad: this.rv(ud, 'salvoLad'), ax: x, ay: y, iy, ...this.kaboomArgs });
     },
     isAlive: forms.Entity.isAlive
   })});
@@ -1302,7 +1350,7 @@ global.rooms['fly.models'] = async foundation => {
       let { team=null, salvoLad=null, r=0, dps=3.1, sizePerSec=30 } = val;
       return {}.gain(...arr, { team, salvoLad, r, dps, sizePerSec });
     }),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'sizePerSec' ].concat(...arr)),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'sizePerSec' ].gain(...arr)),
     getRelVal: function(ud) {
       let { x, y } = forms.Physical.getRelVal.call(this, ud);
       return { x, y, r: this.v('sizePerSec') * this.getAgeMs(ud) * 0.001 };
@@ -1327,8 +1375,15 @@ global.rooms['fly.models'] = async foundation => {
   })});
   let SalvoLadMissile = U.form({ name: 'SalvoLadMissile', has: { MBullet }, props: (forms, Form) => ({
     
-    initProps: forms.allArr('initProps', (i, arr, val) => ({}).gain(...arr, ({ horzSpd: 0, horzMs: 0, delayMs: 0, bound: { form: 'rect', w: 3, h: 14 } }).pref(val))),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'horzSpd', 'horzMs', 'delayMs' ].concat(...arr)),
+    initProps: forms.allArr('initProps', (i, arr, val) => {
+      
+      let args = { horzSpd: 0, horzMs: 0, delayMs: 0, bound: { form: 'rect', w: 3, h: 14 } };
+      
+      // Any properties in `val` replace those in `args`
+      return ({}).gain(...arr, args.map((v, k) => val.has(k) ? val[k] : v));
+      
+    }),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'horzSpd', 'horzMs', 'delayMs' ].gain(...arr)),
     getRelVal: function(ud) {
       
       let durMs = this.getAgeMs(ud);
@@ -1364,7 +1419,7 @@ global.rooms['fly.models'] = async foundation => {
     },
     
     initProps: forms.allArr('initProps', (i, arr) => ({}).gain(...arr, { scoreDamage: 0 })),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [].concat(...arr)),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [].gain(...arr)),
     getCollideResult: function(ud, ent) {
       console.log(`${U.getFormName(this)} -> ${U.getFormName(ent)}`);
       if (U.hasForm(ent, Mortal)) ent.takeDamage(ud, this, 1);
@@ -1447,7 +1502,7 @@ global.rooms['fly.models'] = async foundation => {
       if (swingHz < 0) throw Error(`Negative "swingHz" param; use negative "swingAmt" instead`);
       return {}.gain(...arr, { ax, ay, spd, delayMs, phase, swingHz, swingAmt, numSwings });
     }),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'ax', 'ay', 'spd', 'delayMs', 'phase', 'swingHz', 'swingAmt' ].concat(...arr)),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'ax', 'ay', 'spd', 'delayMs', 'phase', 'swingHz', 'swingAmt' ].gain(...arr)),
     getRelVal: function(ud) {
       let durMs = this.getAgeMs(ud);
       let ax = this.v('ax'); let ay = this.v('ay');
@@ -1524,7 +1579,7 @@ global.rooms['fly.models'] = async foundation => {
       };
     },
     initProps: forms.allArr('initProps', (i, arr) => ({}).gain(...arr)),
-    syncProps: forms.allArr('syncProps', (i, arr) => [].concat(...arr)),
+    syncProps: forms.allArr('syncProps', (i, arr) => [].gain(...arr)),
     doSpawn: function(ud, spawnType, state, props) {
       
       if (spawnType !== 'shoot')
@@ -1571,15 +1626,14 @@ global.rooms['fly.models'] = async foundation => {
       let { initHp=2, minSize=16, hpPerSec=1.33, sizeMult=1.75 } = val;
       return {}.gain(...arr, { initHp, minSize, hpPerSec, sizeMult, dist: null });
     }),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'initHp', 'hpDmg', 'minSize', 'hpPerSec', 'sizeMult' ].concat(...arr)),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'initHp', 'hpDmg', 'minSize', 'hpPerSec', 'sizeMult' ].gain(...arr)),
     getRelVal: function(ud) {
       
       let { x, y } = forms.Mover.getRelVal.call(this, ud);
-      let hpLost = this.v('hpDmg');
+      let hpDmg = this.v('hpDmg');
       let sizeMult = this.v('sizeMult');
       let minSize = this.v('minSize');
-      
-      return { x, y, r: minSize + (this.getMaxHp(ud) - hpLost) * sizeMult };
+      return { x, y, r: minSize + (this.getMaxHp(ud) - hpDmg) * sizeMult };
       
     },
     getMaxHp: function(ud) {
@@ -1622,15 +1676,11 @@ global.rooms['fly.models'] = async foundation => {
       });
     },
     
-    // TODO: HEEERE! Replace "getSyncProps", "initEntity", "init",
-    // with "initProps" and "initSyncs"! Allow "getRelVal" to return
-    // relative coordinates, and a reference to the "node" the Entity
-    // is considered relative to!
     initProps: forms.allArr('initProps', (i, arr, val) => {
       let { ud: { ms }, mode='steady', shootDelayMs=2500, shootDelayInitMs=shootDelayMs, bulletArgs={} } = val;
       return {}.gain(...arr, { mode, shootDelayMs, bulletArgs, shootMark: ms + shootDelayInitMs });
     }),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [].concat(...arr)),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [].gain(...arr)),
     getMaxHp: function() { return Form.maxHp; },
     getStepResult: function(ud) {
       let { x, y } = this.getRelVal(ud);
@@ -1670,14 +1720,14 @@ global.rooms['fly.models'] = async foundation => {
       });
     },
     
-    initProps: C.noFn('initProps'),
-    initSyncs: C.noFn('initSyncs'),
+    initProps: forms.allArr('initProps', (i, arr) => ({}).gain(...arr)), //C.noFn('initProps'),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [].gain(...arr)), //C.noFn('initSyncs'),
     getMaxHp: function() { return Form.maxHp; },
     ...forms.Enemy.slice('canCollide', 'collide'),
     getStepResult: function(ud) {
       
-      this.moveToDestination(ud);
       let { ms } = ud;
+      let { x, y } = this.getRelVal(ud);
       
       let birth = [];
       if (ms >= this.spawnMark) {
@@ -1696,7 +1746,11 @@ global.rooms['fly.models'] = async foundation => {
         
       }
       
-      return { x: this.x, y: this.y, ...Form.bound, birth };
+      return { tangibility: {
+        bound: { ...Form.bound, x, y },
+        team: 'enemy',
+        sides: [ 'head', 'tail' ]
+      }};
       
     },
     isAlive: function(ud) {
@@ -1717,15 +1771,11 @@ global.rooms['fly.models'] = async foundation => {
       });
     },
     
-    initProps: C.noFn('initProps'),
-    initSyncs: C.noFn('initSyncs'),
+    initProps: forms.allArr('initProps', (i, arr) => ({}).gain(...arr)), //C.noFn('initProps'),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [].gain(...arr)), //C.noFn('initSyncs'),
     getMaxHp: function() { return Form.maxHp; },
     ...forms.Enemy.slice('canCollide', 'collide'),
-    permState: forms.allArr('permState', (i, arr) => ({}).gain(...arr)),
-    normState: forms.allArr('normState', (i, arr) => ({}).gain(...arr)),
     updateAndGetResult: function(ud) {
-      
-      this.moveToDestination(ud);
       
       let { aheadDist, ms, spf } = ud;
       let birth = [];
@@ -1820,7 +1870,7 @@ global.rooms['fly.models'] = async foundation => {
       });
       
     }),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'lives', 'aheadSpd', 'x', 'y', 'tw', 'th', 'px', 'py', 'pw', 'ph', 'visiMult', 'outcome' ].concat(...arr)),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'lives', 'aheadSpd', 'x', 'y', 'tw', 'th', 'px', 'py', 'pw', 'ph', 'visiMult', 'outcome' ].gain(...arr)),
     
     getRelVal: function(ud) { return { x: this.v('x'), y: this.v('y') }; },
     getParent: function(ud) { return null; },
@@ -1828,8 +1878,8 @@ global.rooms['fly.models'] = async foundation => {
       
       let timingMs = foundation.getMs();
       
-      let entities = [ ...this.relNozz('fly.entity').set ]; // A snapshot
-      let levelPlayers = this.relNozz('fly.levelPlayer').set;
+      let entities = [ ...this.relRecs('fly.entity') ]; // A snapshot
+      let levelPlayers = this.relRecs('fly.levelPlayer');
       let flyHut = this.v('flyHut');
       
       let bounds = Form.getLevelBounds(this); // TODO: Should become an instance method
@@ -1875,7 +1925,7 @@ global.rooms['fly.models'] = async foundation => {
         if (visible && !ent.sprite) {
           ent.sprite = flyHut.createRec('fly.sprite', [ this, ent ], 'visible');
         } else if (!visible && ent.sprite) {
-          ent.sprite.dry();
+          ent.sprite.end();
           ent.sprite = null;
         }
         
@@ -1889,7 +1939,7 @@ global.rooms['fly.models'] = async foundation => {
         
       }
       
-      // Step 2: Collide all Teams against each together
+      // Step 2: Collide all Teams against each other
       let tryCollide = (updateData, headCd, tailCd) => {
         if (!headCd.ent.isAlive(updateData) || !tailCd.ent.isAlive(updateData)) return;
         
@@ -1917,7 +1967,7 @@ global.rooms['fly.models'] = async foundation => {
         let isAce = U.hasForm(entity, Ace);
         
         // Non-Aces are trivial to handle
-        if (!isAce) entity.dry();
+        if (!isAce) entity.end();
         
         // Aces have a more complex way of dying
         if (isAce && !entity.deathMarked) {
@@ -1928,6 +1978,8 @@ global.rooms['fly.models'] = async foundation => {
           if (this.v('lives') > 0) {
             
             this.v('lives', v => v - 1);
+            
+            entity.v('scoreDeath', v => v + 1);
             setTimeout(() => {
               
               let { player: pb, total: tb } = Level.getLevelBounds(this);
@@ -1957,7 +2009,7 @@ global.rooms['fly.models'] = async foundation => {
         
         // Update LevelPlayers with the stats from their Models
         for (let gp of levelPlayers) {
-          for (let gpe of gp.relNozz('fly.levelPlayerEntity').set) {
+          for (let gpe of gp.relRecs('fly.levelPlayerEntity')) {
             let ent = gpe.mems['fly.entity'];
             if (ent.isAlive(updateData)) rep.v('hpDmg', 1); // Kill remaining Aces
             gp.mems['fly.player'].modVal(v => (v.score = ent.v('scoreDamage'), v.deaths = ent.v('scoreDeath'), v));
@@ -1965,7 +2017,7 @@ global.rooms['fly.models'] = async foundation => {
         }
         
         this.v('outcome', 'lose');
-        this.v('resolveTimeout', setTimeout(() => this.dry(), 2500));
+        this.v('resolveTimeout', setTimeout(() => this.end(), 2500));
         
       }
       
@@ -2017,7 +2069,7 @@ global.rooms['fly.models'] = async foundation => {
           
           // Transfer Model stats to fly.player Records
           for (let gp of levelPlayers) {
-            for (let gpe of gp.relNozz('fly.levelPlayerEntity').set) {
+            for (let gpe of gp.relRecs('fly.levelPlayerEntity')) {
               let ent = gpe.mems['fly.entity'];
               gp.mems['fly.player'].modVal(v => (v.score = ent.v('scoreDamage'), v.deaths = ent.v('scoreDeath'), v));
             }
@@ -2031,7 +2083,7 @@ global.rooms['fly.models'] = async foundation => {
           });
           
           // Dry the fly.level Record
-          this.dry();
+          this.end();
           
         }, 3000));
         
@@ -2100,7 +2152,7 @@ global.rooms['fly.models'] = async foundation => {
       let { name, models=[], terrain=null, bounds=null, aheadSpd=100, visiMult=1 } = val;
       return {}.gain(...arr, { name, models, terrain, bounds, aheadSpd, visiMult });
     }),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'name', 'terrain' ].concat(...arr)),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'name', 'terrain' ].gain(...arr)),
     getMinY: C.noFn('getMinY'),
     getMaxY: C.noFn('getMaxY'),
     getParent: function(ud) { return null; },
@@ -2205,7 +2257,7 @@ global.rooms['fly.models'] = async foundation => {
       }
       return {}.gain(...arr, { dist, startY });
     }),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'dist', 'startY' ].concat(...arr)),
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'dist', 'startY' ].gain(...arr)),
     getMinY: function() { return this.v('startY'); },
     getMaxY: function() { return this.v('startY') + this.v('dist'); },
     isStanding: function(ud) {
@@ -2228,7 +2280,7 @@ global.rooms['fly.models'] = async foundation => {
   // Move whatever possible from MomentAhead into Moment, then fill out MomentTargetType
   
   return {
-    JoustMan, JoustManBullet, JoustManLaserSphere, JoustManLaserVert, JoustManLaserHorz,
+    JoustMan, JoustManBullet, JoustManLaserSphere, JoustManLaserVert, JoustManLaserHorz, JoustManLaserJoust,
     GunGirl,
     SlamKid, SlamKidSlammer,
     SalvoLad, SalvoLadDumbBomb, SalvoLadKaboom, SalvoLadMissile,

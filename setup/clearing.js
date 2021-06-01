@@ -74,12 +74,9 @@ protoDef(Object, Symbol.iterator, function*() { for (let k in this) yield [ k, t
 
 protoDef(Array, 'each', Array.prototype.forEach);
 protoDef(Array, 'has', Array.prototype.includes);
-protoDef(Array, 'map', function(it) {
+protoDef(Array, 'map', function(it) {     // Iterator: (val, ind) => val
   let ret = [];
-  for (let i = 0, len = this.length; i < len; i++) {
-    let v = it(this[i], i);
-    if (v !== C.skip) ret.push(v);
-  }
+  for (let i = 0, len = this.length; i < len; i++) { let v = it(this[i], i); if (v !== C.skip) ret.push(v); }
   return ret;
 });
 protoDef(Array, 'toObj', function(it) { // Iterator: (val, ind) => [ key0, val0 ]
@@ -95,7 +92,7 @@ protoDef(Array, 'all', function(fn=Boolean) { return this.every(fn); });
 protoDef(Array, 'any', function(fn=Boolean) { return this.some(fn); });
 protoDef(Array, 'isEmpty', function() { return !this.length; });
 protoDef(Array, 'add', function(...args) { this.push(...args); return args[0]; });
-protoDef(Array, 'gain', function(arr) { this.push(...arr); return this; });
+protoDef(Array, 'gain', function(...arrs) { for (let arr of arrs) this.push(...arr); return this; });
 protoDef(Array, 'count', function() { return this.length; });
 protoDef(Array, 'categorize', function(fn) {
   
@@ -291,10 +288,11 @@ let U = global.U = {
     return U.dbgCntMap[name] = (U.dbgCntMap.has(name) ? U.dbgCntMap[name] + 1 : 0);
   },
   int32: Math.pow(2, 32),
-  safe: (f1, f2=e=>e) => {
-    if (!U.isForm(f2, Function)) f2 = () => f2;
-    try { let r = f1(); return U.isForm(r, Promise) ? r.catch(f2) : r; }
-    catch(err) { return f2(err); }
+  safe: (fn, onErr=e=>e) => {
+    // Allow `onErr` to be provided as a constant
+    if (!U.isForm(onErr, Function)) onErr = () => onErr;
+    try { let r = fn(); return U.isForm(r, Promise) ? r.catch(onErr) : r; }
+    catch(err) { return onErr(err); }
   },
   then: (v, rsv, rjc=null) => {
     if (U.isForm(v, Promise)) return v.then(rsv, rjc);
@@ -1022,6 +1020,55 @@ U.logic = (() => {
   
   let TimerSrc = U.form({ name: 'TimerSrc', has: { Endable, Src }, props: (forms, Form) => ({
     
+    init: function({ ms, num=1, immediate=(num !== 1), foundation=global.foundation, getMs=foundation.getMs.bind(foundation) }) {
+      
+      // `num` may be set to `Infinity` for unlimited ticks
+      
+      // `this.markMs` anchors the `TimerSrc` to the correct moment; we
+      // should set it as early as possible for accuracy
+      this.markMs = getMs();
+      
+      if (!U.isForm(num, Number)) throw Error(`"num" must be integer`);
+      if (num < 0) throw Error(`"num" must be >= 0`);
+      
+      forms.Endable.init.call(this);
+      forms.Src.init.call(this);
+      
+      if (num === 0) { this.end(); return; }
+      
+      this.num = num;
+      this.count = 0;
+      this.ms = ms;
+      this.getMs = getMs;
+      
+      if (immediate)  Promise.resolve().then(() => this.doSend());
+      else            this.timeout = setTimeout(() => this.doSend(), ms);
+      
+    },
+    doSend: function() {
+      
+      // An error thrown from any Route will short-circuit this function
+      // before `this.send(...)` completes; need `catch/finally`
+      try {
+        this.send(this.count);
+      } finally {
+        if (++this.count >= this.num) { this.end(); }
+        else {
+          this.timeout = setTimeout(() => this.doSend(), (this.markMs += this.ms) - this.getMs());
+        }
+      }
+      
+    },
+    cleanup: function() {
+      propDef(this, 'send', Function.stub);
+      clearTimeout(this.timeout);
+    }
+    
+    
+    /*
+    
+    
+    
     init: function({ ms, num=1, immediate=(num !== 1) }) {
       
       // `num` may be set to `Infinity` for unlimited ticks
@@ -1035,6 +1082,8 @@ U.logic = (() => {
       this.num = num;
       if (num === 0) { this.end(); return; }
       
+      // TODO: `setInterval` gradually drifts away from true timing
+      // https://stackoverflow.com/questions/8173580
       this.interval = setInterval(() => this.doSend(), ms);
       if (immediate) Promise.resolve().then(() => this.doSend());
       
@@ -1042,14 +1091,17 @@ U.logic = (() => {
     doSend: function() {
       // An error thrown from any Route will short-circuit this function
       // after `this.send(...)` is called
-      if (this.num <= 0) { throw Error(`Underlying Errors prevented TimerSrc from ending`); }
-      this.send(--this.num);
-      if (this.num === 0) this.end();
+      try     { this.send(--this.num); }
+      finally { if (this.num <= 0) this.end(); }
     },
     cleanup: function() {
       propDef(this, 'send', Function.stub);
       clearInterval(this.interval);
     }
+    
+    
+    
+    */
     
   })});
   

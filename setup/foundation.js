@@ -310,6 +310,9 @@
       // "message" component of the stack will only be a single line!
       // TODO: This isn't necessarily cross-brower compatible!
       if (U.isForm(err, SyntaxError)) {
+        
+        if (!stack.has('\n\n')) stack = `(Unknown error)\n\n${stack}`;
+        
         [ diagram, stack ] = stack.cut('\n\n', 1);
         traceBegins = stack.cut('\n')[0].count() + 1; // +1 accounts for newline
         errDescContent = diagram + '\n' + stack.slice(0, traceBegins - 1); // 0 could become `U.getFormName(err).count + 2` to trim off "SyntaxError: "

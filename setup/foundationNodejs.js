@@ -120,7 +120,7 @@
         init: function(data=[ 'passwords', 'keys', 'tokens', 'secrets', 'credentials', 'bitcoin', 'wallet', 'honey' ]) { this.data = data; },
         access: function() { return this; },
         setContentType: function() { return this; },
-        getContentType: function() { return 'application/json'; },
+        getContentType: function() { return 'application/json; charset=utf-8'; },
         getFsType: function() { return 'folder'; },
         getContent: function() { return this.data; },
         setContent: function() {},
@@ -133,10 +133,10 @@
       // characters cannot occur side-by-side.
       $secureFpReg: /^[.]?([a-zA-Z0-9@][.]?)*$/,
       $extToContentType: {
-        json: 'text/json',
-        html: 'text/html',
-        css: 'text/css',
-        txt: 'text/plain',
+        json: 'text/json; charset=utf-8',
+        html: 'text/html; charset=utf-8',
+        css: 'text/css; charset=utf-8',
+        txt: 'text/plain; charset=utf-8',
         ico: 'image/x-icon',
         png: 'image/png',
         jpg: 'image/jpeg',
@@ -1382,8 +1382,8 @@
         getLayoutForm: name => {
           if (!layouts.has(name)) {
             
-            layouts[name] = U.form({ name: `Fake${name}`, has: { Tmp }, props: (forms, Form) => ({
-              init: function() { forms.Tmp.init.call(this); },
+            layouts[name] = U.form({ name: `Fake${name}`, has: { Src }, props: (forms, Form) => ({
+              init: function() { forms.Src.init.call(this); this.keysSrc = Src.stub; },
               isInnerLayout: function() { return false; },
               setText: function(){},
               addReal: function(){},
@@ -1492,7 +1492,7 @@
           if (msg === null || U.isForm(msg, Object, Array)) {
             
             // Interpret `null`, Object and Array as json responses
-            contentType = 'application/json';
+            contentType = 'application/json; charset=utf-8';
             msg = JSON.stringify(msg);
             
           } else {
@@ -1501,7 +1501,7 @@
             // to "application/octet-stream"
             let accept = ({ req }).seek([ 'req', 'headers', 'accept' ]).val || '*/*';
             let [ t1='*', t2='*' ] = accept.split(/[,;]/)[0].split('/');
-            contentType = (t1 !== '*' && t2 !== '*') ? `${t1}/${t2}` : 'application/octet-stream';
+            contentType = (t1 !== '*' && t2 !== '*') ? `${t1}/${t2}; charset=utf-8` : 'application/octet-stream';
             msg = msg.toString();
             
           }
