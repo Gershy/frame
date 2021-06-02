@@ -1365,7 +1365,7 @@
         mod: function() {},
         addLayout: function() {
           let tmp = Tmp();
-          tmp.layout = { src: Src.stub };
+          tmp.layout = { src: Src.stub, route: Function.stub };
           return tmp;
         },
         getLayout: function() { return this.fakeLayout || (this.fakeLayout = primaryFakeReal.getLayoutForm('SuperFake')()); },

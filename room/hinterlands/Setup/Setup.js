@@ -91,6 +91,8 @@ global.rooms['hinterlands.Setup'] = async foundation => {
       
       let storage = null;
       
+      if (!habitats.count()) throw Error(`Setup requires at least 1 habitat`);
+      
       /// {ABOVE=
       
       // "storage" defaults to `null` unless the "storageKeep" arg is
@@ -160,6 +162,9 @@ global.rooms['hinterlands.Setup'] = async foundation => {
             }
             let kidHut = uid ? huts[uid] : null;
             replayCnt++;
+            
+            // TODO: Need to wait for `kidHut` to have the correct
+            // action enabled on it
             Hut.tell(kidHut, hut, null, null, msg, ms);
           }
         }

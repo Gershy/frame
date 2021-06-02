@@ -24,7 +24,7 @@ global.rooms['internal.real.htmlBrowser.Press'] = async foundation => {
       let domNode = real.domNode;
       
       if (this.modes.has('continuous')) {
-        let clickFn = evt => this.send();
+        let clickFn = evt => { this.send(); evt.stopPropagation(); evt.preventDefault(); };
         domNode.addEventListener('click', clickFn);
         tmp.endWith(() => domNode.removeEventListener('click', clickFn));
       }
@@ -51,6 +51,7 @@ global.rooms['internal.real.htmlBrowser.Press'] = async foundation => {
     
     render: function(real, domNode) {
       if (this.modes.includes('continuous')) domNode.style.cursor = 'pointer';
+      domNode.style.userSelect = 'none';
     }
     
   })});
