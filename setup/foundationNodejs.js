@@ -3,6 +3,9 @@
   // TODO: For `res.writeHead(...)`, consider Keep-Alive
   // e.g. 'Keep-Alive: timeout=5, max=100'
   
+  // TODO: Write a test room with a SyntaxError caused by `continue`
+  // appearing outside any loop - the stack trace isn't handled well!
+  
   let { Tmp, Src, MemSrc, FnSrc, Chooser, Scope, Range } = U.logic;
   
   let { Foundation, Real, Keep } = U.setup;

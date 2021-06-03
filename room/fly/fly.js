@@ -278,9 +278,9 @@ global.rooms['fly'] = async foundation => {
               
               let modelTerm = lobbyPlayer.getVal('modelTerm');
               
+              let { x: ax, y: ay } = level.getAceSpawnLoc({ ms });
               let aceEntity = hut.createRec('fly.entity', [ level ], {
-                ud: { ms }, ms, type: lobbyModelOptions[modelTerm].Form.name, name: player.getVal('term'),
-                ax: Math.round(Math.random() * 200 - 100), ay: -200
+                ud: { ms }, ms, type: lobbyModelOptions[modelTerm].Form.name, name: player.getVal('term'), ax, ay
               });
               
               hut.createRec('fly.levelPlayerEntity', [ levelPlayer, aceEntity ]);

@@ -173,7 +173,7 @@ global.rooms['fly.models'] = async foundation => {
     },
     getCollideResult: C.noFn('getCollideResult'),
     getStepResult: C.noFn('getStepResult'),
-    getDieResult: function(ud) {},
+    getDieResult: function(ud) { this.end(); },
     isAlive: function(ud) {
       if (this.v('lsMs') !== null && this.getAgeMs(ud) > this.lsMs) return false;
       return true;
@@ -478,11 +478,28 @@ global.rooms['fly.models'] = async foundation => {
     getStepResult: function(ud) {
       
       if (!this.isAlive(ud)) {
-        return { tangibility: {
-          bound: { ...Form.bound, x: -7070707070, y: -7070707070 },
-          team: 'ace', 
-          sides: []
-        }};
+        
+        // Try to respawn; happens if we cross the respawn mark or win!
+        if (ud.ms >= this.v('spawnMark') || ud.outcome === 'win') {
+          
+          this.v('hpDmg', 0);
+          this.v('spawnMark', v => Math.min(v, ud.ms));
+          this.v('invulnMark', this.v('spawnMark') + Form.invulnMs);
+          
+          let controlProps = this.initControlProps(ud);
+          for (let [ k, v ] of controlProps) this.v(k, v);
+          
+          let pb = ud.bounds.player;
+          let tb = ud.bounds.total;
+          
+          let { x, y } = ud.level.getAceSpawnLoc(ud);
+          this.setAnchor(ud, x, y);
+          
+        }
+        
+        // If couldn't respawn give intangible result
+        if (!this.isAlive(ud)) return { tangibility: { bound: null, team: 'ace', sides: [] }};
+        
       }
       
       let { ms, spf, bounds, outcome } = ud;
@@ -535,6 +552,25 @@ global.rooms['fly.models'] = async foundation => {
         team: 'ace',
         sides: (this.v('invulnMark') > ms) ? [] : [ 'tail' ]
       }};
+      
+    },
+    getDieResult: function(ud) {
+      // Don't call `forms.Mortal.getDieResult` - that ends the Rec; Ace
+      // Recs don't end, they always stick around until the Level ends
+      // to track player score
+      
+      if (this.v('spawnMark') > ud.ms) return; // This Ace is already respawning
+      
+      let { level } = ud;
+      
+      this.v('scoreDeath', v => v + 1);
+      if (level.v('lives') > 0) {
+        level.v('lives', v => v - 1);
+        this.v('spawnMark', ud.ms + Ace.respawnMs);
+      } else {
+        this.v('spawnMark', ud.ms + 100 * 1000);
+        level.v('outcome', 'lose');
+      }
       
     },
     aceUpdate: C.noFn('aceUpdate'),
@@ -1339,6 +1375,8 @@ global.rooms['fly.models'] = async foundation => {
       }};
     },
     getDieResult: function(ud) {
+      forms.Entity.getDieResult.call(this, ud);
+      
       let { x, y } = this.getRelVal(ud);
       let iy = ud.bounds.total.y;
       ud.spawnEntity({ type: 'SalvoLadKaboom', team: this.v('team'), salvoLad: this.rv(ud, 'salvoLad'), ax: x, ay: y, iy, ...this.kaboomArgs });
@@ -1872,12 +1910,19 @@ global.rooms['fly.models'] = async foundation => {
       };
       
     },
+    getAceSpawnLoc: function(ud) {
+      let { total: { y: ty }, player: { y: py, w, h } } = this.getBounds(ud);
+      return { x: (Math.random() * w * 0.6) - w * 0.3, y: (py - ty) - h * 0.25 };
+    },
     getRelVal: function(ud) { return { x: this.v('x'), y: this.v('y') }; },
     getParent: function(ud) { return null; },
     update: function(ms, spf) {
       
+      /// {ABOVE=
+      
       let timingMs = foundation.getMs();
       
+      // TODO: Do we need this snapshot AND `updateData.entities`? Just use `updateData.entities` in place of this snapshot???
       let entities = [ ...this.relRecs('fly.entity') ]; // A snapshot
       let levelPlayers = this.relRecs('fly.levelPlayer');
       let flyHut = this.v('flyHut');
@@ -1890,14 +1935,11 @@ global.rooms['fly.models'] = async foundation => {
         outcome: this.v('outcome'),
         spawnEntity: vals => flyHut.createRec('fly.entity', [ this ], { ...vals, ud: updateData })
       };
-      let bounds = updateData.bounds = this.getBounds(updateData); // TODO: Should become an instance method
+      let bounds = updateData.bounds = this.getBounds(updateData);
       let ud = updateData;
-      
-      let didLose = false;
       
       // Step 1: Update all Entities (tracking collidables and births)
       let collideTeams = {};
-      let allEvents = [];
       for (let ent of entities) {
         
         // Allow the Model to update
@@ -1921,7 +1963,8 @@ global.rooms['fly.models'] = async foundation => {
         /// }
         
         // Manage sprite visibility
-        let visible = geom.doCollideRect(bounds.total, geom.containingRect(stepResult.tangibility.bound));
+        let isBounded = !!stepResult.tangibility.bound;
+        let visible = isBounded && geom.doCollideRect(bounds.total, geom.containingRect(stepResult.tangibility.bound));
         if (visible && !ent.sprite) {
           ent.sprite = flyHut.createRec('fly.sprite', [ this, ent ], 'visible');
         } else if (!visible && ent.sprite) {
@@ -1930,7 +1973,7 @@ global.rooms['fly.models'] = async foundation => {
         }
         
         // Track this Model
-        if (stepResult.tangibility.sides.length > 0) {
+        if (isBounded && stepResult.tangibility.sides.length > 0) {
           let team = stepResult.tangibility.team;
           if (!collideTeams.has(team)) collideTeams[team] = { head: [], tail: [] };
           let coll = { ent, stepResult };
@@ -1959,54 +2002,12 @@ global.rooms['fly.models'] = async foundation => {
         
       }}
       
-      // Step 3: Check deaths and update "fly.entity" Records
       for (let entity of entities) {
-        
-        if (entity.isAlive(ud)) continue;
-        
-        let isAce = U.hasForm(entity, Ace);
-        
-        // Non-Aces are trivial to handle
-        if (!isAce) entity.end();
-        
-        // Aces have a more complex way of dying
-        if (isAce && !entity.deathMarked) {
-          
-          entity.deathMarked = true;
-          
-          // Try to respawn (if enough lives are available)
-          if (this.v('lives') > 0) {
-            
-            this.v('lives', v => v - 1);
-            
-            entity.v('scoreDeath', v => v + 1);
-            setTimeout(() => {
-              
-              // TODO: Note that `ud` is INVALID IN A TIMEOUT!!
-              let { player: pb, total: tb } = this.getBounds(ud);
-              entity.deathMarked = false;
-              entity.v('hpDmg', 0);
-              entity.v('invulnMark', this.v('ms') + Ace.invulnMs);
-              entity.setAnchor(ud, 0, (pb.y - tb.y) + pb.h * -0.2);
-              
-            }, Ace.respawnMs);
-            
-          } else {
-            
-            // Losing a life without any respawns
-            didLose = true;
-            
-          }
-          
-        }
-        
-        // All deaths may have births, and short-circuit this stage
-        entity.getDieResult(ud);
-        
+        if (!entity.isAlive(ud)) entity.getDieResult(ud);
       }
       
       // Step 4: Check for initial loss frame (`!this.resolveTimeout`)
-      if (didLose && !this.v('resolveTimeout')) {
+      if (this.v('outcome') === 'lose' && !this.v('resolveTimeout')) {
         
         // Update LevelPlayers with the stats from their Models
         for (let gp of levelPlayers) {
@@ -2017,7 +2018,6 @@ global.rooms['fly.models'] = async foundation => {
           }
         }
         
-        this.v('outcome', 'lose');
         this.v('resolveTimeout', setTimeout(() => this.end(), 2500));
         
       }
@@ -2045,8 +2045,7 @@ global.rooms['fly.models'] = async foundation => {
       }
       
       // Step 7: Check victory condition; no Moments remaining
-      let canWin = true;
-      if (canWin && !this.v('resolveTimeout') && (!currentMoment || !currentMoment.isStanding(ud))) {
+      if (this.v('outcome') === 'none' && !this.v('resolveTimeout') && (!currentMoment || !currentMoment.isStanding(ud))) {
         
         // Set up a Moment to fill in terrain as the victory occurs
         let newMoment = ud.spawnEntity({
@@ -2105,6 +2104,8 @@ global.rooms['fly.models'] = async foundation => {
         }
         for (let [ t, n ] of types) console.log(`    ${n.toString().padHead(3, ' ')} x ${t}`);
       }
+      
+      /// =ABOVE}
       
     }
   })});
