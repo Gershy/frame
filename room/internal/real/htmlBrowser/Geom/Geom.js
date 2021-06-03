@@ -6,7 +6,7 @@ global.rooms['internal.real.htmlBrowser.Geom'] = async foundation => {
   ]);
   
   return U.form({ name: 'Geom', has: { Layout }, props: (forms, Form) => ({
-    init: function({ anchor='cen', x=null, y=null, w=null, h=null }) {
+    init: function({ x=null, y=null, w=null, h=null, anchor=(x !== null || y !== null) ? 'cen' : 'none' }) {
       Object.assign(this, { anchor, x, y, w, h });
     },
     render: function(real, domNode) {

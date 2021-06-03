@@ -11,12 +11,12 @@
 // TrustedHutConsumers should be able to add their tests to some central
 // test suite. Tests which pass once should always be expected to pass.
 
-// ParadigmOptions could determine how various features are implemented
+// LowLevelOptions could determine how various features are implemented
 // behind the scenes. For example, an animation: should it be rendered
 // with css+html (@keyframes), or as a gif? That would be a single
-// ParadigmOption. Others could involve storing data in an Object vs an
+// LowLevelOption. Others could involve storing data in an Object vs an
 // Array - which is faster? For gzip, which compression level is best?
-// Eventually we have a fixed vector of ParadigmOptions (or maybe it's
+// Eventually we have a fixed vector of LowLevelOptions (or maybe it's
 // trickier, since certain POs could produce a variable number of
 // sub-POs?). If we had a way to measure the overall "cost" of an app,
 // AI could optimize values for all POs.

@@ -94,7 +94,7 @@ global.rooms['hinterlands.habitat.HtmlBrowserHabitat'] = async foundation => {
               <meta charset="utf-8"/>
               <title>${roomName.split('.').slice(-1)[0].upper()}</title>
               <meta name="viewport" content="width=device-width, initial-scale=1"/>
-              <link rel="shortcut icon" type="image/x-icon" href="${urlFn(srcHut, { command: this.prefix + 'icon', reply: '2' })}" />
+              <link rel="shortcut icon" type="image/x-icon" href="${urlFn(srcHut, { command: this.prefix + '.icon', reply: '2' })}" />
               <style type="text/css">
                 * { position: relative; }
                 body { opacity: 0; font-size: ${textSize}; transition: opacity 200ms linear; }

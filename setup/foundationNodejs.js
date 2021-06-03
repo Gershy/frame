@@ -207,7 +207,7 @@
           
           if (fsType === 'folder') throw Error(`${this.desc()} is type "folder"; can't set non-null content`);
           
-          // Simply try to write
+          // Simply try to write and if successful short-circuit
           try { return await Form.fs.setLetter(this.absPath, content, ...opts); } catch(err) {}
           
           // Count how many parent folders are missing
@@ -1602,7 +1602,7 @@
               let tempSrcHut = { isAfar: Function.stub, refreshDryTimeout: Function.stub, roadSrcs: Set.stub };
               hut.hear(tempSrcHut, null, reply, msg, ms);
             }}};
-              
+        
         if (!road) return res.writeHead(302, { 'Location': '/' }).end();
         
         // Note that we've seen this Hut under this host

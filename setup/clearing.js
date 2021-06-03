@@ -602,10 +602,10 @@ U.logic = (() => {
         
         // Creates a relationship such that whenever `this` ends the
         // supplied `val` also ends. If `mode` is "prm" the relationship
-        // is permanent. Otherwise if `mode` is "tmp" the relationship can
-        // be severed, allowing `this` to end without `val` also ending.
-        // If `mode === 'prm'` returns `this` for convenience
-        // If `mode === 'tmp'` returns a Tmp representing the relationship
+        // is permanent. If `mode` is "tmp" the relationship can be
+        // severed, allowing `this` to end without `val` also ending.
+        // `mode === 'prm'` returns `this` for convenience
+        // `mode === 'tmp'` returns a Tmp representing the relationship
         
         if (U.hasForm(val, Function)) return this.route(val, mode) || this;
         if (U.hasForm(val, Endable)) return this.route((...args) => val.end(...args), mode) || this;

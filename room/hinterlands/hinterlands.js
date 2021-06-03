@@ -3,7 +3,7 @@ global.rooms.hinterlands = async foundation => {
   let recordRoom = await foundation.getRoom('record');
   
   let { RecTypes, Rec } = recordRoom;
-  let { Src, Tmp } = U.logic;
+  let { Src, Tmp, MemSrc } = U.logic;
   
   let Hut = U.form({ name: 'Hut', has: { RecTypes, Rec }, props: (forms, Form) => ({
     
@@ -138,6 +138,7 @@ global.rooms.hinterlands = async foundation => {
       
       // Commands mapped to handling functions
       this.roadSrcs = {};
+      this.roadSrcsSrc = MemSrc.Prm1(this.roadSrcs);
       
       if (this.isAfar()) {
         
@@ -377,12 +378,17 @@ global.rooms.hinterlands = async foundation => {
     isAfar: function() { return !this.foundation; },
     
     roadSrc: function(command, ...args) {
-      if (args.length) throw Error(`Supplied more than 1 parameter to "roadSrc"`);
+      if (args.count()) throw Error(`Supplied more than 1 parameter to "roadSrc"`);
       if (!this.roadSrcs.has(command)) {
-        this.roadSrcs[command] = Src();
-        this.roadSrcs[command].desc = `Hut ComSrc for "${command}"`;
+        this.roadSrcs[command] = Object.assign(Src(), { desc: `Hut ComSrc for "${command}"` });
+        this.roadSrcsSrc.retain(this.roadSrcs);
       }
       return this.roadSrcs[command];
+    },
+    roadSrcForCommand: function(srcHut, command) {
+      if (srcHut && srcHut.roadSrcs.has(command)) return srcHut.roadSrcs[command];
+      if (this.roadSrcs.has(command)) return this.roadSrcs[command];
+      return null;
     },
     hear: async function(srcHut, road, reply, msg, ms=foundation.getMs()) {
       
@@ -393,9 +399,8 @@ global.rooms.hinterlands = async foundation => {
       if (srcHut && srcHut.isAfar()) srcHut.refreshDryTimeout();
       /// =ABOVE}
       
-      let command = msg.command;
-      if (srcHut && srcHut.roadSrcs.has(command)) return srcHut.roadSrcs[command].send({ srcHut, trgHut: this, road, msg, reply, ms });
-      if (this.roadSrcs.has(command)) return this.roadSrcs[command].send({ srcHut, trgHut: this, road, msg, reply, ms });
+      let roadSrc = this.roadSrcForCommand(srcHut, msg.command);
+      if (roadSrc) return roadSrc.send({ srcHut, trgHut: this, road, msg, reply, ms });
       
       /// {BELOW=
       throw Error(`Failed to handle command: ${JSON.stringify(msg)}`);
@@ -822,13 +827,15 @@ global.rooms.hinterlands = async foundation => {
       // `throw Error` within `fn`). Either the result or Error will be
       // used as a reply. Note that if the result is `C.skip`, `reply`
       // will ensure that no value ever gets sent.
-      let hearSrc = this.roadSrcs[command] = Src(); hearSrc.desc = `Hut TellSender for "${command}"`;
-      tmp.endWith(() => delete this.roadSrcs[command]);
-      tmp.endWith(hearSrc.route(({ msg, reply, ms, srcHut, trgHut }) => {
+      let hearSrc = this.roadSrcs[command] = Object.assign(Src(), { desc: `Hut TellSender for "${command}"` });
+      this.roadSrcsSrc.retain(this.roadSrcs);
+      
+      tmp.limit(() => { delete this.roadSrcs[command]; this.roadSrcsSrc.retain(this.roadSrcs); });
+      tmp.limit(hearSrc.route(({ msg, reply, ms, srcHut, trgHut }) => {
         
         let result = U.safe(() => fn(msg, { ms, srcHut, trgHut }));
         
-        /// {DEBUG= // TODO: this is DEBUG inside ABOVE; nesting not supported yet
+        /// {DEBUG= // TODO: DEBUG nested inside ABOVE; unsupported...
         if (result != null && !U.isForm(result, Object, Array, String))
           if (![ U.setup.Keep, Error ].find(Form => U.hasForm(result, Form)).found)
             throw Error(`Action for "${command}" returned invalid type ${U.getFormName(result)} (need to return response data)`);

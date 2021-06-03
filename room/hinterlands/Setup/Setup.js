@@ -136,7 +136,7 @@ global.rooms['hinterlands.Setup'] = async foundation => {
           kidHut.recFollows = Map(); // only AfarHuts have "recFollows", but `kidRec` is pretending to be afar
           kidHut.pendingSync = { add: {}, upd: {}, rem: {} };
           
-          // Stifle any hears the KidHut receives. The KidHut doesn't
+          // Stifle any Hears the KidHut receives. The KidHut doesn't
           // require any input whatsoever; the storage already knows
           // everything the KidHut will tell!
           Object.defineProperty(kidHut, 'hear', { value: () => {} });
@@ -151,7 +151,6 @@ global.rooms['hinterlands.Setup'] = async foundation => {
         
         doDbg && console.log(`Catching up; files to replay: ${replayCount}`);
         let t = foundation.getMs();
-        let replayCnt = 0;
         for (let i = 0; i < replayCount; i++) {
           let replayLines = (await keep.seek(getItemName(i)).getContent('utf8')).split('\n');
           for (let replayJson of replayLines) {
@@ -161,14 +160,44 @@ global.rooms['hinterlands.Setup'] = async foundation => {
               huts[uid].endWith(() => delete huts[uid]);
             }
             let kidHut = uid ? huts[uid] : null;
-            replayCnt++;
             
-            // TODO: Need to wait for `kidHut` to have the correct
-            // action enabled on it
+            // TODO: This implies that roadSrc names should be unique
+            // between ParHut and KidHut (e.g. cannot enabled a roadSrc
+            // on KidHut if a roadSrc of the same name exists on ParHut;
+            // at the moment this won't throw an Error).
+            let roadSrcExistsImmediately = false
+              || (hut.roadSrcs.has(msg.command))
+              || (kidHut && kidHut.roadSrcs.has(msg.command));
+            if (!roadSrcExistsImmediately) {
+              
+              // Imagine `kidHut` has just begun entering a state where
+              // `msg.command` is enabled on it as a valid action - this
+              // typically occurs when a new Scope has triggered. But
+              // the Scope's `fn` may be async, with asynchronous delay
+              // between the Scope becoming active and `enableAction`
+              // being called. For this reason we need to wait for the
+              // action to become enabled. If we didn't do this the
+              // effect of the current replay would be ignored entirely,
+              // as the Hut isn't willing to Hear it. Note that the
+              // action can be enabled for either KidHut or ParHut; for
+              // that reason we monitor both here:
+              
+              let kidRoute = null;
+              let parRoute = null;
+              let hutDesc = kidHut ? `${kidHut.desc()} or ${hut.desc()}` : hut.desc();
+              await Promise(r => {
+                kidRoute = kidHut && kidHut.roadSrcsSrc.route(roadSrcs => roadSrcs.has(msg.command) && r());
+                parRoute = hut.roadSrcsSrc.route(roadSrcs => roadSrcs.has(msg.command) && r());
+              });
+              kidRoute && kidRoute.end();
+              parRoute && parRoute.end();
+              
+            }
+            
             Hut.tell(kidHut, hut, null, null, msg, ms);
           }
         }
-        doDbg && console.log(`Caught up via replays after ${((foundation.getMs() - t) / 1000).toFixed(2)}s`);
+        doDbg && console.log(`Processed ${replayCount}/${replayCount} replay files in ${((foundation.getMs() - t) / 1000).toFixed(2)}s (state is up to date!)`);
         
         for (let [ k, hut ] of huts) hut.end();
         
@@ -187,10 +216,15 @@ global.rooms['hinterlands.Setup'] = async foundation => {
         if (!writeTimeout) writeTimeout = setTimeout(async () => {
           writeTimeout = null;
           let content = writeBuffer.map(item => JSON.stringify(item)).join('\n');
-          await keep.seek(getItemName(writeIndex)).setContent(content);
+          let currentReplayKeep = keep.seek(getItemName(writeIndex));
+          let prevBytes = await currentReplayKeep.getContentByteLength();
+          await currentReplayKeep.setContent(content);
+          
+          doDbg && console.log(`Wrote ${Buffer.byteLength(content) - prevBytes} bytes to replay storage`);
+          
           if (writeBuffer.count() >= bufferMinSize) { writeBuffer = []; writeIndex++; }
         }, bufferMs);
-          
+        
         // Add `item` into buffer to be consumed upon timeout
         writeBuffer.push(item);
         
@@ -198,11 +232,20 @@ global.rooms['hinterlands.Setup'] = async foundation => {
       
       let ignoreCommands = Set([ 'thunThunk', 'syncInit', 'html.multi', 'html.css', 'html.room', 'html.icon' ]);
       hut.roadDbgEnabled = false;
-      let hutHearOrig = hut.hear;
       
+      // Overwrite the Hut's logic to Hear commands so that the command
+      // is simply logged before the typical logic occurs
+      let hutHearOrig = hut.hear;
       Object.defineProperty(hut, 'hear', { value: (srcHut, road, reply, msg, ms=foundation.getMs()) => {
-        if (msg.command && !ignoreCommands.has(msg.command)) addItem({ uid: srcHut ? srcHut.uid : null, ms, msg });
+        
+        let canProcess = true
+          && msg.command
+          && !ignoreCommands.has(msg.command)
+          && hut.roadSrcForCommand(srcHut, msg.command) !== null;
+        if (canProcess) addItem({ uid: srcHut ? srcHut.uid : null, ms, msg });
+        
         return hutHearOrig.call(hut, srcHut, road, reply, msg, ms);
+        
       }});
       
       tmp.endWith(() => delete hut.hear);
