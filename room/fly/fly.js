@@ -123,6 +123,9 @@ global.rooms['fly'] = async foundation => {
       for (let i = 0; i < n; i++) yield start + i * stepAmt;
     }
   };
+  
+  // TODO: `geom` defined in both fly and fly.models; it should probably
+  // be a separate Room!
   let geom = {
     checkForms: (form1, form2, bound1, bound2) => {
       if (form1 === bound1.form && form2 === bound2.form) return [ bound1, bound2 ];
@@ -636,8 +639,9 @@ global.rooms['fly'] = async foundation => {
                   myEntity,
                   entities: entitySrc.vals.toObj(r => [ r.uid, r ]),
                   //createRec: level.flyHut.createRec.bind(this, flyHut),
-                  bounds: models.Level.getLevelBounds(level)
+                  bounds: null
                 };
+                ud.bounds = level.getBounds(ud);
                 
                 if (ud.ms === lastMs[0]) {
                   
@@ -650,7 +654,7 @@ global.rooms['fly'] = async foundation => {
                   
                   // Extrapolate aheadDist
                   level.v('y', lastMs[2] + addY);
-                  ud.bounds = models.Level.getLevelBounds(level);
+                  ud.bounds = level.getBounds(ud);
                   
                 } else {
                   
