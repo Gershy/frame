@@ -77,7 +77,7 @@ global.rooms['fly'] = async foundation => {
     
     let { Axis1D, Scroll, Decal, Geom, Press, Text, TextInput } = lay;
     
-    define('root', Geom({ w: '100vmin', h: '100vmin' }));
+    define('root', Geom({ w: '100vmin', h: '100vmin', anchor: 'cen' }));
     
     define('content1', Text({ size: '200%' }));
     define('content2', Text({ size: '150%' }));
@@ -585,30 +585,40 @@ global.rooms['fly'] = async foundation => {
               
               // levelPlayerEntity := (level+player)+entity
               let myEntity = levelPlayerEntity.mems['fly.entity'];
-              
-              console.log(`Player ${myPlayer.getVal('term')} controls`, myEntity.desc());
+              let level = levelPlayerEntity.mems['fly.levelPlayer'].mems['fly.level'];
               
               let levelReal = dep(rootReal.addReal('level', [
                 lay.Axis1D({ axis: 'x', dir: '+' }),
                 lay.Geom({ w: '100%', h: '100%' })
               ]));
-              let levelInfoL = levelReal.addReal('levelInfo', [
+              let levelInfoLReal = levelReal.addReal('levelInfo', [
                 lay.Geom({ w: '10%', h: '100%' }),
                 lay.Axis1D({ axis: 'y', dir: '+', mode: 'compactCenter' }),
                 lay.Decal({ colour: 'rgba(0, 0, 0, 0.8)' }),
               ], { order: 0 });
-              let levelInfoR = levelReal.addReal('levelInfo', [
+              let levelInfoRReal = levelReal.addReal('levelInfo', [
                 lay.Geom({ w: '10%', h: '100%' }),
                 lay.Axis1D({ axis: 'y', dir: '+', mode: 'compactCenter' }),
                 lay.Decal({ colour: 'rgba(0, 0, 0, 0.8)' })
               ], { order: 2 });
+              
+              let livesLabelReal = levelInfoLReal.addReal('livesLabel', [
+                lay.Text({ text: 'Lives:' }),
+                lay.Decal({ textColour: '#fff' })
+              ]);
+              let livesValueReal = levelInfoLReal.addReal('livesValue', [
+                lay.Text({ size: '200%' }),
+                lay.Decal({ textColour: '#fff' })
+              ]);
+              dep(level.valSrc.route(() => {
+                livesValueReal.mod({ text: level.getVal('lives').toString() });
+              }));
               
               let gameReal = levelReal.addReal('game', [
                 lay.Geom({ w: '80%', h: '100%' }),
                 lay.Art({ pixelCount: [ 800, 1000 ] })
               ]);
               
-              let level = levelPlayerEntity.mems['fly.levelPlayer'].mems['fly.level'];
               let entitySrc = level.relSrc('fly.entity');
               
               let spriteSrc = level.relSrc('fly.sprite');

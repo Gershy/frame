@@ -16,7 +16,7 @@ global.rooms['internal.real.htmlBrowser.Geom'] = async foundation => {
       
       // Skip all positioning changes if no anchor
       if (this.anchor === 'none') return;
-    
+      
       let hasAxis1D = real.layouts.find(lay => U.isForm(lay, Axis1D.Item)).found;
       if (hasAxis1D && (this.x !== null || this.y !== null || this.anchor !== 'cen')) throw Error(`Geom provided x/y along with Axis1D positioning`);
       if (!hasAxis1D) domNode.style.position = 'absolute';

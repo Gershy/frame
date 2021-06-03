@@ -34,7 +34,7 @@ global.rooms.hinterlands = async foundation => {
       // | Afar    | Afar    | N/A - we cannot direct two AfarHuts!
       // | None    | Here    | Road must not be provided
       // | None    | Afar    | N/A - Error!
-      // | None    | None    | N/A - Error!
+      // | Any     | None    | N/A - Error!
       
       // Note that "unrelated" Huts are two Huts such that neither is
       // the other's descendant
@@ -471,7 +471,7 @@ global.rooms.hinterlands = async foundation => {
       // {
       //   add: [
       //     { type: 'app.myThing1', uid: '001Au2s8', mems: [], val: null },
-      //     { type: 'app.myThing2', uid: '0011Au2s9', mems: [ '001Au2s8' ], val: null },
+      //     { type: 'app.myThing2', uid: '001Au2s9', mems: [ '001Au2s8' ], val: null },
       //     { type: 'app.myThing1', uid: null, mems: [], val: 'proposed!' }
       //   ],
       //   upd: [
