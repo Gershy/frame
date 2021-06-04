@@ -136,7 +136,7 @@ global.rooms['hinterlands.habitat.HtmlBrowserHabitat'] = async foundation => {
                   hutId: srcHut.uid,
                   aboveMsAtResponseTime: foundation.getMs(),
                   initData: initSyncTell
-                })}'));
+                }).replace(/[\\']/g, '\\$&')}'));
                 
                 /// {DEBUG=
                 // Catch exceptions after building all Rooms
