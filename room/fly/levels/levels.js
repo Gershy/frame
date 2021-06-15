@@ -721,15 +721,56 @@ global.rooms['fly.levels'] = async foundation => {
           { type: 'Furler', x: 0, y: +100, spd: -40, swingHz: 0.08, swingAmt: -200, shootDelayMs: 700, shootProps: { vel: 300, lsMs: 3000 } }
           
         ]},
-        { name: 'crush1', type: 'MomentAhead', terrain: 'meadow', dist: 1500, aheadSpd: 100, models: [
+        { name: 'transition', type: 'MomentAhead', terrain: 'meadowToPlains', dist: 250, aheadSpd: 100, models: []},
+        { name: 'crush1', type: 'MomentAhead', terrain: 'plains', dist: 1500, aheadSpd: 100, models: [
           
-          { type: 'Drifter', x: -300, y: -50, vel: 120, ang: 0.5 - 0.125, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
-          { type: 'Drifter', x: -300, y: -50, vel:  80, ang: 0.5 - 0.125, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
-          { type: 'Drifter', x: -300, y: -50, vel:  40, ang: 0.5 - 0.125, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: -300, y: -50, vel: 100, ang: 0.5 - 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: -300, y: -50, vel:  80, ang: 0.5 - 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: -300, y: -50, vel:  60, ang: 0.5 - 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
           
-          { type: 'Drifter', x: +300, y: -50, vel: 120, ang: 0.5 + 0.125, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
-          { type: 'Drifter', x: +300, y: -50, vel:  80, ang: 0.5 + 0.125, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
-          { type: 'Drifter', x: +300, y: -50, vel:  40, ang: 0.5 + 0.125, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 }
+          { type: 'Drifter', x: +300, y: -50, vel: 100, ang: 0.5 + 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: +300, y: -50, vel:  80, ang: 0.5 + 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: +300, y: -50, vel:  60, ang: 0.5 + 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 }
+          
+        ]},
+        { name: 'crush2', type: 'MomentAhead', terrain: 'plains', dist: 1500, aheadSpd: 100, models: [
+          
+          { type: 'Winder', x: -300, y: +300, spd: -130, swingHz: 0.04, swingAmt: +200 },
+          { type: 'Winder', x: -100, y: +250, spd: -130, swingHz: 0.04, swingAmt: +100 },
+          { type: 'Winder', x:    0, y: +200, spd: -130, swingHz: 0.04, swingAmt:    0 },
+          { type: 'Winder', x: +100, y: +250, spd: -130, swingHz: 0.04, swingAmt: -100 },
+          { type: 'Winder', x: +300, y: +300, spd: -130, swingHz: 0.04, swingAmt: -200 },
+          
+          { type: 'Drifter', x: -300, y: -50, vel: 120, ang: 0.5 - 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: -300, y: -50, vel: 100, ang: 0.5 - 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: -300, y: -50, vel:  80, ang: 0.5 - 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          
+          { type: 'Drifter', x: +300, y: -50, vel: 120, ang: 0.5 + 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: +300, y: -50, vel: 100, ang: 0.5 + 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: +300, y: -50, vel:  80, ang: 0.5 + 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 }
+          
+        ]},
+        { name: 'crush3', type: 'MomentAhead', terrain: 'plains', dist: 1500, aheadSpd: 100, models: [
+          
+          { type: 'Winder', x: -100, y: +250, spd: -130, swingHz: 0.04, swingAmt: +100 },
+          { type: 'Weaver', x: -300, y: +300, spd: -130, swingHz: 0.04, swingAmt: +200 },
+          { type: 'Winder', x:    0, y: +200, spd: -130, swingHz: 0.04, swingAmt:    0 },
+          { type: 'Winder', x: +100, y: +250, spd: -130, swingHz: 0.04, swingAmt: -100 },
+          { type: 'Weaver', x: +300, y: +300, spd: -130, swingHz: 0.04, swingAmt: -200 },
+          
+          { type: 'Drifter', x: -300, y: -50, vel: 120, ang: 0.5 - 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: -300, y: -50, vel: 100, ang: 0.5 - 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: -300, y: -50, vel:  80, ang: 0.5 - 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          
+          { type: 'Drifter', x: +300, y: -50, vel: 120, ang: 0.5 + 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: +300, y: -50, vel: 100, ang: 0.5 + 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: +300, y: -50, vel:  80, ang: 0.5 + 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          
+          { type: 'Winder', x: -200, y: -640, spd: +10, swingHz: 0.08, swingAmt: +200 },
+          { type: 'Winder', x: -100, y: -620, spd: +10, swingHz: 0.08, swingAmt: +100 },
+          { type: 'Winder', x:    0, y: -600, spd: +10, swingHz: 0.08, swingAmt:    0 },
+          { type: 'Winder', x: +100, y: -620, spd: +10, swingHz: 0.08, swingAmt: -100 },
+          { type: 'Winder', x: +200, y: -640, spd: +10, swingHz: 0.08, swingAmt: -200 }
           
         ]},
         { name: 'final', type: 'MomentAhead', terrain: 'plains', dist: 1000, aheadSpd: 100, models: [
@@ -738,7 +779,7 @@ global.rooms['fly.levels'] = async foundation => {
         ]}
       ]
     },
-    killPlains: { num: 1, name: 'Kill Plains', password: 'R4CIN6',
+    killPlains: { num: 3, name: 'Kill Plains', password: 'R4CIN6',
       desc: paragraph(``),
       winText: paragraph(``),
       moments: [

@@ -4,6 +4,9 @@
 //     players to ready up; no single player controls starting the game)
 //     are also "nature"
 
+// TODO: Try refreshing in the middle of a Level; this *should* work
+// seamlessly!
+
 global.rooms['fly'] = async foundation => {
   
   // REAL+LAYOUT:
@@ -55,14 +58,25 @@ global.rooms['fly'] = async foundation => {
   let mspf = 1000 / fps;  // Millis per server-side tick
   let levelStartingDelay = 1000; // Give players this long to unready
   let initialAheadSpd = 100;
-  let testAces = [ 'JoustMan', 'GunGirl', 'SlamKid', 'SalvoLad' ];
-  let testing = {
-    lives: 10000,
-    levelName: 'imposingFields',
-    momentName: 'practice1',
-    ace: testAces[Math.floor(Math.random() * testAces.length)]
-  };
-  let getLevelData = name => ({
+  let testAceTerms = [ 'joust', 'gun', 'slam', 'salvo' ];
+  
+  let testing = null;
+  if (foundation.getArg('flyTesting')) {
+    let [ levelName, momentName, aceTerm=null ] = foundation.getArg('flyTesting').split('.');
+    testing = {
+      lives: 100, levelName, momentName,
+      aceTerm: aceTerm || testAceTerms[Math.floor(Math.random() * testAceTerms.length)]
+    };
+  }
+  
+  //{
+  //  lives: 10000,
+  //  levelName: 'imposingFields',
+  //  momentName: 'wall1',
+  //  aceTerm: testAceTerms[Math.floor(Math.random() * testAceTerms.length)]
+  //};
+  
+  let getLevelMetadata = name => ({
     name, ...levels[name].slice('num', 'password'),
     dispName: levels[name].name, dispDesc: levels[name].desc
   });
@@ -232,6 +246,40 @@ global.rooms['fly'] = async foundation => {
         let hutPlayer = hut.createRec('fly.hutPlayer', [ hut, player ]);
         player.limit(termTmp);
         
+        if (testing) {
+          
+          let levelMetadata = getLevelMetadata(testing.levelName);
+          let levelMomentsDef = levels[testing.levelName].moments;
+          if (testing.momentName) {
+            // Fast-forward to the desired moment
+            let ind = levelMomentsDef.find(moment => moment.name === testing.momentName).ind;
+            
+            if (!levelMomentsDef[ind].has('bounds')) {
+              let bounds = null
+              for (let moment of levelMomentsDef.slice(0, ind - 1)) bounds = moment.bounds || bounds;
+              levelMomentsDef[ind].gain({ bounds });
+            }
+            
+            if (ind !== null) levelMomentsDef = levelMomentsDef.slice(ind);
+          }
+          
+          
+          let lobby = hut.createRec('fly.lobby', [ flyRec ], {
+            // Code used to enter lobby
+            code: 'test',
+            
+            // Metadata to display level information
+            levelMetadata,
+            levelMomentsDef,
+            
+            // Timestamp at which all players readied up
+            allReadyMark: null
+          });
+          
+          let lobbyPlayer = hut.createRec('fly.lobbyPlayer', [ lobby, player ], { modelTerm: testing.aceTerm });
+          
+        }
+        
       });
       dep.scp(flyRec, 'fly.lobby', (lobby, dep) => {
         
@@ -268,8 +316,8 @@ global.rooms['fly'] = async foundation => {
           dep(TimerSrc({ foundation, ms: levelStartingDelay, num: 1 })).route(() => {
             
             let ms = foundation.getMs();
-            let levelDef = levels[lobby.getVal('level').name];
-            let level = hut.createRec('fly.level', [ flyRec, lobby ], { ud: { ms }, ms, levelDef, flyHut: hut });
+            let levelMomentsDef = lobby.getVal('levelMomentsDef') || levels[lobby.getVal('levelMetadata').name].moments;
+            let level = hut.createRec('fly.level', [ flyRec, lobby ], { ud: { ms }, ms, moments: levelMomentsDef, flyHut: hut });
             
             for (let lobbyPlayer of lobby.relRecs('fly.lobbyPlayer')) {
               
@@ -357,14 +405,14 @@ global.rooms['fly'] = async foundation => {
                 code: rand.genInteger(0, Math.pow(62, 4)).encodeStr(C.base62, 4),
                 
                 // Metadata to display level information
-                level: getLevelData('rustlingMeadow'),
+                levelMetadata: getLevelMetadata('rustlingMeadow'),
                 
                 // Timestamp at which all players readied up
                 allReadyMark: null
                 
               });
               
-              hut.createRec('fly.lobbyPlayer', [ lobby, myPlayer ], { model: null });
+              hut.createRec('fly.lobbyPlayer', [ lobby, myPlayer ], { modelTerm: null });
               
               // Track the number of players in the lobby
               let lobbyPlayersSrc = lobby.limit(SetSrc(lobby.relSrc('fly.lobbyPlayer')));
@@ -436,10 +484,10 @@ global.rooms['fly'] = async foundation => {
               lay.Text({ size: 'calc(8px + 0.9vmin)', align: 'fwd' })
             ]);
             
-            dep(myLobby.getValSrc().route(({ level=null }) => {
-              if (!level) return;
-              levelOverviewTitleReal.mod({ text: level.dispName });
-              levelOverviewDescReal.mod({ text: level.dispDesc });
+            dep(myLobby.getValSrc().route(({ levelMetadata=null }) => {
+              if (!levelMetadata) return;
+              levelOverviewTitleReal.mod({ text: levelMetadata.dispName });
+              levelOverviewDescReal.mod({ text: levelMetadata.dispDesc });
             }));
             
             let levelPasswordReal = levelReal.addReal('lobbyLevelPassword', [
@@ -465,7 +513,7 @@ global.rooms['fly'] = async foundation => {
               let levelName = levels.find(v => v.password === password).key;
               if (!levelName) throw Error(`Invalid password`);
               console.log(`Lobby ${myLobby.desc()} set to ${levelName}`);
-              myLobby.objVal({ level: getLevelData(levelName) });
+              myLobby.objVal({ levelMetadata: getLevelMetadata(levelName) });
               /// =ABOVE}
               
             }));
@@ -638,7 +686,6 @@ global.rooms['fly'] = async foundation => {
                   level,
                   myEntity,
                   entities: entitySrc.vals.toObj(r => [ r.uid, r ]),
-                  //createRec: level.flyHut.createRec.bind(this, flyHut),
                   bounds: null
                 };
                 ud.bounds = level.getBounds(ud);

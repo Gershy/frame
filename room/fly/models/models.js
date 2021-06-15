@@ -486,9 +486,6 @@ global.rooms['fly.models'] = async foundation => {
           this.v('spawnMark', v => Math.min(v, ud.ms));
           this.v('invulnMark', this.v('spawnMark') + Form.invulnMs);
           
-          let controlProps = this.initControlProps(ud);
-          for (let [ k, v ] of controlProps) this.v(k, v);
-          
           let pb = ud.bounds.player;
           let tb = ud.bounds.total;
           
@@ -565,8 +562,20 @@ global.rooms['fly.models'] = async foundation => {
       
       this.v('scoreDeath', v => v + 1);
       if (level.v('lives') > 0) {
+        
+        // Subtract lives
         level.v('lives', v => v - 1);
+        
+        // Respawn in future
         this.v('spawnMark', ud.ms + Ace.respawnMs);
+        
+        // Reset state
+        let controlProps = this.initControlProps(ud);
+        for (let [ k, v ] of controlProps) this.v(k, v);
+        
+        // Reset all effects
+        this.v('effects', Set());
+        
       } else {
         this.v('spawnMark', ud.ms + 100 * 1000);
         level.v('outcome', 'lose');
@@ -672,10 +681,10 @@ global.rooms['fly.models'] = async foundation => {
           // Weapon 1 act 2: Spheres
           let args = { joustMan: this, team: 'ace', lsMs: 1800 };
           let offs = [
-            { xOff: -64, yOff: +16, r: 28, dps: 11 },
-            { xOff: +64, yOff: +16, r: 28, dps: 11 },
-            { xOff: +24, yOff: -30, r: 20, dps: 8 },
-            { xOff: -24, yOff: -30, r: 20, dps: 8 }
+            { xOff: -64, yOff: +16, r: 28, dps: 12 },
+            { xOff: +64, yOff: +16, r: 28, dps: 12 },
+            { xOff: +24, yOff: -30, r: 20, dps: 10 },
+            { xOff: -24, yOff: -30, r: 20, dps: 10 }
           ];
           for (let off of offs) ud.spawnEntity({ type: 'JoustManLaserSphere', ...args, ...off });
           
@@ -872,7 +881,7 @@ global.rooms['fly.models'] = async foundation => {
           
           if (!this.v('lockoutPunishMark')) {
             this.v('lockoutPunishMark', ms + 500);
-            this.v('effects').add({ mark: ms + 500, type: 'spdMult', spdMult: 0.4 });
+            this.v('effects').add({ mark: ms + 500, type: 'spdMult', spdMult: 0.55 });
           }
           
         }
@@ -1862,15 +1871,14 @@ global.rooms['fly.models'] = async foundation => {
     
     initProps: forms.allArr('initProps', (i, arr, val) => {
       
-      let { levelDef=null } = val;
-      let momentsDef = (levelDef ? levelDef.moments : []).toArr(v => v);
+      let { moments=[] } = val;
       
       let { ud: { ms }, flyHut, lives=5, outcome='none', aheadSpd=0, x=0, y=0 } = val;
       let { tw=280, th=350, px=0, py=0, pw=280, ph=350, visiMult=1 } = val;
       
       return {}.gain(...arr, {
         flyHut,
-        momentsDef,
+        momentsDef: moments.toArr(v => v),
         currentMoment: null, resolveTimeout: null,
         outcome,
         lives, aheadSpd, x, y, tw, th, px, py, pw, ph, visiMult 
@@ -2077,12 +2085,12 @@ global.rooms['fly.models'] = async foundation => {
           
           // Update the Lobby taking this win into account
           this.mems['fly.lobby'].modVal(v => {
-            v.level.dispName = `${v.level.dispName} - COMPLETE`;
-            v.level.dispDesc = levels[v.level.name].winText;
+            v.levelMetadata.dispName = `${v.levelMetadata.dispName} - COMPLETE`;
+            v.levelMetadata.dispDesc = levels[v.levelMetadata.name].winText;
             return v;
           });
           
-          // Dry the fly.level Record
+          // End the Record (back to lobby)
           this.end();
           
         }, 3000));
@@ -2254,8 +2262,13 @@ global.rooms['fly.models'] = async foundation => {
     initProps: forms.allArr('initProps', (i, arr, val) => {
       let { ud, name, bounds, dist, prevMoment=null, startY=null } = val;
       if (startY === null) {
-        startY = prevMoment ? prevMoment.getMaxY(ud) : (bounds.total.h * -0.5);
-        //prevMoment ? prevMoment.getMaxY(ud) : ud.bounds.total.b
+        
+        // If there's no `prevMoment` we can expect `bounds` to be
+        // defined because this is the first Moment in the Level
+        if (prevMoment)   startY = prevMoment.getMaxY(ud);
+        else if (bounds)  startY = bounds.total.h * -0.5;
+        else              startY = 0;
+        
       }
       return {}.gain(...arr, { dist, startY });
     }),
@@ -2277,9 +2290,6 @@ global.rooms['fly.models'] = async foundation => {
   let MomentTargetType = U.form({ name: 'MomentTargetType', has: { Moment }, props: (forms, Form) => ({
     
   })});
-  
-  // Ground buildings with 1-ups (need to slow down aheadSpd for this, or else they move toooo fast??)
-  // Move whatever possible from MomentAhead into Moment, then fill out MomentTargetType
   
   return {
     JoustMan, JoustManBullet, JoustManLaserSphere, JoustManLaserVert, JoustManLaserHorz, JoustManLaserJoust,

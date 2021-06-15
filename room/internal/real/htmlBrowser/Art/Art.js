@@ -157,9 +157,7 @@ global.rooms['internal.real.htmlBrowser.Art'] = async foundation => {
       return tmp;
       
     },
-    render: function() {
-      
-    }
+    render: function() {}
   })});
   
 };
