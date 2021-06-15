@@ -74,6 +74,7 @@ global.rooms['internal.real.htmlBrowser.Art'] = async foundation => {
           w: canvasW, h: canvasH,
           hw: canvasW >> 1, hh: canvasH >> 1
         }),
+        imgCache: {},
         
         initFrameCen: (col, f) => {
           draw.frame(() => {
@@ -104,8 +105,12 @@ global.rooms['internal.real.htmlBrowser.Art'] = async foundation => {
         image: (keep, x, y, w, h, alpha=1) => {
           let hw = w >> 1;
           let hh = h >> 1;
-          let img = new Image(); //keep.getImage();
-          img.src = keep.getUrl();
+          
+          let url = keep.getUrl();
+          let img = !draw.imgCache.has(url)
+            ? draw.imgCache[url] = Object.assign(new Image(), { src: url })
+            : draw.imgCache[url];
+          
           try {
             ctx.imageSmoothingEnabled = false;
             ctx.globalAlpha = alpha;

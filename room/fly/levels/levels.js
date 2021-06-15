@@ -722,7 +722,7 @@ global.rooms['fly.levels'] = async foundation => {
           
         ]},
         { name: 'transition', type: 'MomentAhead', terrain: 'meadowToPlains', dist: 250, aheadSpd: 100, models: []},
-        { name: 'crush1', type: 'MomentAhead', terrain: 'plains', dist: 1500, aheadSpd: 100, models: [
+        { name: 'crush1', type: 'MomentAhead', terrain: 'plains', dist: 1250, aheadSpd: 100, models: [
           
           { type: 'Drifter', x: -300, y: -50, vel: 100, ang: 0.5 - 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
           { type: 'Drifter', x: -300, y: -50, vel:  80, ang: 0.5 - 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
@@ -733,7 +733,7 @@ global.rooms['fly.levels'] = async foundation => {
           { type: 'Drifter', x: +300, y: -50, vel:  60, ang: 0.5 + 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 }
           
         ]},
-        { name: 'crush2', type: 'MomentAhead', terrain: 'plains', dist: 1500, aheadSpd: 100, models: [
+        { name: 'crush2', type: 'MomentAhead', terrain: 'plains', dist: 1250, aheadSpd: 100, models: [
           
           { type: 'Winder', x: -300, y: +300, spd: -130, swingHz: 0.04, swingAmt: +200 },
           { type: 'Winder', x: -100, y: +250, spd: -130, swingHz: 0.04, swingAmt: +100 },
@@ -750,10 +750,10 @@ global.rooms['fly.levels'] = async foundation => {
           { type: 'Drifter', x: +300, y: -50, vel:  80, ang: 0.5 + 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 }
           
         ]},
-        { name: 'crush3', type: 'MomentAhead', terrain: 'plains', dist: 1500, aheadSpd: 100, models: [
+        { name: 'crush3', type: 'MomentAhead', terrain: 'plains', dist: 1250, aheadSpd: 100, models: [
           
-          { type: 'Winder', x: -100, y: +250, spd: -130, swingHz: 0.04, swingAmt: +100 },
           { type: 'Weaver', x: -300, y: +300, spd: -130, swingHz: 0.04, swingAmt: +200 },
+          { type: 'Winder', x: -100, y: +250, spd: -130, swingHz: 0.04, swingAmt: +100 },
           { type: 'Winder', x:    0, y: +200, spd: -130, swingHz: 0.04, swingAmt:    0 },
           { type: 'Winder', x: +100, y: +250, spd: -130, swingHz: 0.04, swingAmt: -100 },
           { type: 'Weaver', x: +300, y: +300, spd: -130, swingHz: 0.04, swingAmt: -200 },
@@ -766,17 +766,49 @@ global.rooms['fly.levels'] = async foundation => {
           { type: 'Drifter', x: +300, y: -50, vel: 100, ang: 0.5 + 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
           { type: 'Drifter', x: +300, y: -50, vel:  80, ang: 0.5 + 0.125, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
           
-          { type: 'Winder', x: -200, y: -640, spd: +10, swingHz: 0.08, swingAmt: +200 },
-          { type: 'Winder', x: -100, y: -620, spd: +10, swingHz: 0.08, swingAmt: +100 },
-          { type: 'Winder', x:    0, y: -600, spd: +10, swingHz: 0.08, swingAmt:    0 },
-          { type: 'Winder', x: +100, y: -620, spd: +10, swingHz: 0.08, swingAmt: -100 },
-          { type: 'Winder', x: +200, y: -640, spd: +10, swingHz: 0.08, swingAmt: -200 }
+          { type: 'Winder', x: -200, y: -640, spd: +20, swingHz: 0.08, swingAmt: -200 },
+          { type: 'Winder', x: -100, y: -620, spd: +20, swingHz: 0.08, swingAmt: +100 },
+          { type: 'Winder', x:    0, y: -600, spd: +20, swingHz: 0.08, swingAmt:    0 },
+          { type: 'Winder', x: +100, y: -620, spd: +20, swingHz: 0.08, swingAmt: -100 },
+          { type: 'Winder', x: +200, y: -640, spd: +20, swingHz: 0.08, swingAmt: +200 }
           
         ]},
-        { name: 'final', type: 'MomentAhead', terrain: 'plains', dist: 1000, aheadSpd: 100, models: [
-          { type: 'Winder', x: 0, y: +100, spd: -50, swingHz: 0.02, swingAmt: -100 },
-          { type: 'Winder', x: 0, y: +100, spd: -50, swingHz: 0.02, swingAmt: +100 }
-        ]}
+        { name: 'crush4', type: 'MomentAhead', terrain: 'plains', dist: 1250, aheadSpd: 100, models: [
+          
+          { type: 'Weaver', x: -300, y: +300, spd: -130, swingHz: 0.04, swingAmt: +200 },
+          { type: 'Winder', x: -100, y: +250, spd: -130, swingHz: 0.04, swingAmt: +100 },
+          { type: 'Winder', x:    0, y: +200, spd: -130, swingHz: 0.04, swingAmt:    0 },
+          { type: 'Winder', x: +100, y: +250, spd: -130, swingHz: 0.04, swingAmt: -100 },
+          { type: 'Weaver', x: +300, y: +300, spd: -130, swingHz: 0.04, swingAmt: -200 },
+          
+          { type: 'Drifter', x: -300, y: -100, vel: 120, ang: 0.5 - 0.11, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: -300, y: -100, vel: 100, ang: 0.5 - 0.11, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: -300, y: -100, vel:  80, ang: 0.5 - 0.11, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          
+          { type: 'Drifter', x: +300, y: -100, vel: 120, ang: 0.5 + 0.11, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: +300, y: -100, vel: 100, ang: 0.5 + 0.11, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: +300, y: -100, vel:  80, ang: 0.5 + 0.11, hp: 3, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          
+          { type: 'Winder', x: -200, y: -600, spd: +30, swingHz: 0.08, swingAmt: -50 },
+          { type: 'Weaver', x: -100, y: -650, spd: +30, swingHz: 0.12, swingAmt: -50 },
+          { type: 'Winder', x:    0, y: -700, spd: +30, swingHz: 0.12, swingAmt:   0 },
+          { type: 'Weaver', x: +100, y: -650, spd: +30, swingHz: 0.12, swingAmt: +50 },
+          { type: 'Winder', x: +200, y: -600, spd: +30, swingHz: 0.08, swingAmt: +50 }
+          
+        ]},
+        { name: 'final', type: 'MomentAhead', terrain: 'plains', dist: 100 * 1000, aheadSpd: 100,
+          bounds: { total: { w: 500, h: 640 }, player: { x: 0, y: 0, w: 440, h: 550 } },
+          models: [
+          
+            { type: 'Winder', x: 0, y: +100, spd: -50, swingHz: 0.02, swingAmt: -100 },
+            { type: 'Winder', x: 0, y: +100, spd: -50, swingHz: 0.02, swingAmt: +100 },
+            
+            { type: 'WinderMom', x: 0, y: +100, tx: 0, ty: -250, spd: 30, spawnInitDelayMs: 4000, spawnDelayMs: 1800,
+              spawnProps: { fn: () => ({ spd: -60, swingHz: Math.random() * 0.05, swingAmt: 250 - (Math.random() * 500) }) }
+            }
+            
+          ],
+        }
       ]
     },
     killPlains: { num: 3, name: 'Kill Plains', password: 'R4CIN6',

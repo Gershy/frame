@@ -261,9 +261,14 @@ global.rooms['fly.models'] = async foundation => {
       let { x, y } = this.getRelVal(ud);
       this.v('aMs', ud.ms); this.v('ax', x); this.v('ay', y);
     },
-    setMoveSpd: function(ud, vel, acl) {
+    setMoveSpd: function(ud, vel, acl=0) {
+      
+      // Ignore if values are the same
+      if (vel === this.v('vel') && acl === this.v('acl')) return;
+      
       if (ud) this.setMoveAnchor(ud);
-      this.v('vel', vel); this.v('acl', acl);
+      this.v('vel', vel);
+      this.v('acl', acl);
     },
     setCarteDest: function(ud, tx, ty) {
       
@@ -278,6 +283,8 @@ global.rooms['fly.models'] = async foundation => {
       
     },
     setPolarDest: function(ud, ang, dist=null) {
+      
+      if (ang === this.v('ang') && dist === this.v('dist')) return;
       
       if (ud) this.setMoveAnchor(ud);
       
@@ -1020,7 +1027,7 @@ global.rooms['fly.models'] = async foundation => {
     $comboDelayMs: 800, $comboPunishDelayMs: 1000,
     $decampDelayMs: 1200, $decampDurationMs: 350, $decampSpdMult: 0.5, $decampSpd: 430,
     $diveDelayMs: 600, $diveMs: 700, $diveSpdMult: 0.60, $diveFwdMult: 450, $diveBombLsMs: 1200,
-    $missileDelayMs: 600, $missileDmg: 0.5, $missilePDmg:  [0.1,2],
+    $missileDelayMs: 600, $missileDmg: 1, $missilePDmg:  [0.1,3.9],
     $suppressDelayMs: 600, $suppressDmg: 0.4,
     
     $imageKeep: foundation.seek('keep', 'static', [ 'room', 'fly', 'resource', 'aceSalvo.png' ]),
@@ -1078,17 +1085,26 @@ global.rooms['fly.models'] = async foundation => {
           
         }
       });
-      return { birth: [], delayMs: Form.diveDelayMs };
+      return { delayMs: Form.diveDelayMs };
       
     },
     comboMissiles: function(dir, ud) {
       
-      let args = { owner: this, team: 'ace', w: 6, h: 20, vel: 700, ang: 0, horzMs: 400, delayMs: 120, dmg: Form.missileDmg, pDmg: Form.missilePDmg };
-      (5).toArr(n => n).each(n => {
-        this.v('effects').add({ mark: ud.ms + 50 + n * 30, endFn: (i, ud) => ud.spawnEntity({
-          type: 'SalvoLadMissile', ...args, ...i.getRelVal(ud).slice({ ax: 'x', ay: 'y' }),
-          horzSpd: (115 + 30 * (n + 1)) * dir
-        })});
+      let args = {
+        owner: this, team: 'ace',
+        w: 6, h: 20, vel: 700, ang: 0,
+        dmg: Form.missileDmg, pDmg: Form.missilePDmg,
+        step1Ang: 0.30 * dir
+      };
+      (3).toArr(n => n).each(n => {
+        this.v('effects').add({ mark: ud.ms + n * 200, endFn: (i, ud) => {
+          
+          let { x, y } = i.getRelVal(ud);
+          ud.spawnEntity({
+            type: 'SalvoLadMissile', ...args, x: x + 10 * dir, y: y - 15,
+          });
+          
+        }});
       });
       return { delayMs: Form.missileDelayMs };
       
@@ -1425,31 +1441,25 @@ global.rooms['fly.models'] = async foundation => {
     
     initProps: forms.allArr('initProps', (i, arr, val) => {
       
-      let args = { horzSpd: 0, horzMs: 0, delayMs: 0, bound: { form: 'rect', w: 3, h: 14 } };
+      let args = { horzSpd: 0, horzMs: 400, step1Ang: 0.5, ang: 0, bound: { form: 'rect', w: 6, h: 18 } };
       
       // Any properties in `val` replace those in `args`
       return ({}).gain(...arr, args.map((v, k) => val.has(k) ? val[k] : v));
       
     }),
-    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'horzSpd', 'horzMs', 'delayMs' ].gain(...arr)),
-    getRelVal: function(ud) {
+    initSyncs: forms.allArr('initSyncs', (i, arr) => [ 'horzSpd', 'horzMs' ].gain(...arr)),
+    getStepResult: function(ud) {
       
       let durMs = this.getAgeMs(ud);
-      let x = this.v('ax');
-      let y = this.v('ay'); // + (ud.aheadDist - this.initDist) * durMs * 0.001;
-      let horzMs = this.v('horzMs');
-      let horzSpd = this.v('horzSpd');
-      let delayMs = this.v('delayMs');
-      
-      // X changes for horzMs, then stays put
-      if (durMs < horzMs) x += horzSpd * durMs * 0.001;
-      else                x += horzSpd * horzMs * 0.001;
-      
-      if (durMs > horzMs + delayMs) {
-        y = forms.MBullet.getRelVal.call(this, ud, ud.ms - (horzMs + delayMs)).y;
+      if (durMs < this.v('horzMs')) {
+        this.setMoveSpd(ud, 250, -500);
+        this.setPolarDest(ud, this.v('step1Ang'));
+      } else {
+        this.setMoveSpd(ud, -200, +3500);
+        this.setPolarDest(ud, 0);
       }
       
-      return { x, y };
+      return forms.MBullet.getStepResult.call(this, ud);
       
     }
     
@@ -1504,20 +1514,33 @@ global.rooms['fly.models'] = async foundation => {
       let spawnTypes = i.getSpawnTypes();
       let props = {};
       for (let st in spawnTypes) {
-        props[`${st}Mode`] = val.has(`${st}Mode`) ? val[`${st}Mode`] : 'steady';
-        props[`${st}DelayMs`] = val.has(`${st}DelayMs`) ? val[`${st}DelayMs`] : 2500;
-        props[`${st}Props`] = spawnTypes[st].gain(val.has(`${st}Props`) ? val[`${st}Props`] : {});
-        props[`${st}Mark`] = val.ud.ms + (val.has(`${st}InitDelayMs`) ? val[`${st}InitDelayMs`] : props[`${st}DelayMs`]);
+        
+        props[`${st}Mode`] = val.has(`${st}Mode`)
+          ? val[`${st}Mode`]
+          : 'steady';
+        
+        props[`${st}DelayMs`] = val.has(`${st}DelayMs`)
+          ? val[`${st}DelayMs`]
+          : 2500;
+        
+        props[`${st}Props`] = spawnTypes[st].gain(val.has(`${st}Props`)
+          ? val[`${st}Props`]
+          : {});
+        
+        props[`${st}Mark`] = val.ud.ms + (val.has(`${st}InitDelayMs`)
+          ? val[`${st}InitDelayMs`]
+          : props[`${st}DelayMs`]);
+        
       }
-      return {}.gain(...arr, props, { spawnTypes: spawnTypes.toArr((v, k) => k) });
+      let r = {}.gain(...arr, props, { spawnTypes: spawnTypes.toArr((v, k) => k) });
+      return r;
     }),
-    doSpawn: function(ud, spawnType, state, props) {
+    doSpawn: function(ud, spawnType, props) {
       let { ms } = ud;
-      return ud.spawnEntity({ ms, ...props, owner: this, ...state.slice('x', 'y') });
+      let { x, y } = this.getRelVal(ud);
+      return ud.spawnEntity({ ms, ...props, owner: this, x, y });
     },
     getStepResult: function(ud) {
-      
-      let state = this.getRelVal(ud);
       
       for (let st of this.v('spawnTypes')) {
         
@@ -1530,7 +1553,9 @@ global.rooms['fly.models'] = async foundation => {
           : (Math.random() < ((ud.spf * 1000) / delayMs));
         
         if (shootCnd) {
-          this.doSpawn(ud, st, state, this.v(`${st}Props`));
+          let props = this.v(`${st}Props`);
+          if (props.has('fn')) props = { ...props, ...props.fn() };
+          this.doSpawn(ud, st, props);
           this.v(`${st}Mark`, v => v + delayMs);
         }
         
@@ -1628,12 +1653,12 @@ global.rooms['fly.models'] = async foundation => {
     },
     initProps: forms.allArr('initProps', (i, arr) => ({}).gain(...arr)),
     syncProps: forms.allArr('syncProps', (i, arr) => [].gain(...arr)),
-    doSpawn: function(ud, spawnType, state, props) {
+    doSpawn: function(ud, spawnType, props) {
       
       if (spawnType !== 'shoot')
-        return forms.Spawner.doSpawn.call(this, ud, spawnType, state, props);
+        return forms.Spawner.doSpawn.call(this, ud, spawnType, props);
       
-      let { x, y } = state;
+      let { x, y } = this.getRelVal(ud);
       let b1 = ud.spawnEntity({ ...props, team: 'enemy', owner: this, ax: x - Form.bound.r * 0.55, ay: y });
       let b2 = ud.spawnEntity({ ...props, team: 'enemy', owner: this, ax: x + Form.bound.r * 0.55, ay: y });
       
@@ -1757,43 +1782,36 @@ global.rooms['fly.models'] = async foundation => {
     isAlive: forms.allArr('isAlive', (i, arr) => !arr.find(alive => !alive).found)
     
   })});
-  let WinderMom = U.form({ name: 'WinderMom', has: { Enemy, Mover }, props: (forms, Form) => ({
+  let WinderMom = U.form({ name: 'WinderMom', has: { Enemy, Spawner, Mover }, props: (forms, Form) => ({
     
     $bound: { form: 'rect', w: 160, h: 160 }, $maxHp: 90,
     
-    $imageKeep: foundation.seek('keep', 'static', [ 'room', 'fly', 'resource', 'enemyWinderMom.png' ]),
-    $render: (draw, ud, { x, y }) => {
-      Form.parents.Enemy.render(draw, ud, { imageKeep: Form.imageKeep, x, y,
-        w: Form.bound.w, h: Form.bound.h
-      });
-    },
+    // TODO: HEEERE!
     
+    $imageKeep: foundation.seek('keep', 'static', [ 'room', 'fly', 'resource', 'enemyWinderMom.png' ]),
+    
+    getSpawnTypes: function() {
+      return { spawn: { type: 'Winder', spd: -100, swingHz: 0, swingAmt: 0 } };
+    },
     initProps: forms.allArr('initProps', (i, arr) => ({}).gain(...arr)), //C.noFn('initProps'),
     initSyncs: forms.allArr('initSyncs', (i, arr) => [].gain(...arr)), //C.noFn('initSyncs'),
     getMaxHp: function() { return Form.maxHp; },
-    ...forms.Enemy.slice('canCollide', 'collide'),
-    getStepResult: function(ud) {
+    doSpawn: function(ud, spawnType, props) {
       
-      let { ms } = ud;
+      if (spawnType !== 'spawn')
+        return forms.Spawner.doSpawn.call(this, ud, spawnType, props);
+      
       let { x, y } = this.getRelVal(ud);
       
-      let birth = [];
-      if (ms >= this.spawnMark) {
-        
-        let args = {
-          ms, y: 0, spd: 70, swingHz: 0.22, swingAmt: 120,
-          ...this.spawnArgs
-        };
-        args.y += this.y;
-        if (Math.random() > 0.5) { args.x = this.x - 60; args.swingAmt *= -1; }
-        else                     { args.x = this.x + 60; args.swingAmt *= +1; }
-        
-        birth.gain([ Winder(args) ]);
-        
-        this.spawnMark = ms + this.spawnMs;
-        
-      }
+      (Math.random() < 0.5)
+        ? ud.spawnEntity({ ...props, team: 'enemy', owner: this, ax: x - this.Form.bound.w * 0.55, ay: y })
+        : ud.spawnEntity({ ...props, team: 'enemy', owner: this, ax: x + this.Form.bound.w * 0.55, ay: y });
       
+    },
+    getStepResult: function(ud) {
+      
+      forms.Spawner.getStepResult.call(this, ud);
+      let { x, y } = this.getAbsVal(ud);
       return { tangibility: {
         bound: { ...Form.bound, x, y },
         team: 'enemy',
@@ -1801,14 +1819,23 @@ global.rooms['fly.models'] = async foundation => {
       }};
       
     },
+    
     isAlive: function(ud) {
       return true
         && forms.Enemy.isAlive.call(this, ud)
         && forms.Mover.isAlive.call(this, ud);
+    },
+    render: function(ud, draw) {
+      let { x, y } = this.getAbsVal(ud);
+      let { w, h } = this.Form.bound;
+      draw.frame(() => {
+        draw.trn(x, y);
+        draw.imageCen(this.Form.imageKeep, 0, 0, w, h);
+      });
     }
     
   })});
-  let WandererMom = U.form({ name: 'WandererMom', has: { Enemy, Mover }, props: (forms, Form) => ({
+  let WandererMom = null && U.form({ name: 'WandererMom', has: { Enemy, Mover, Spawner }, props: (forms, Form) => ({
     
     $bound: { form: 'rect', w: 150, h: 210 },
     $maxHp: 90, $numBullets: 7, $bulletSpd: 330,
@@ -1822,7 +1849,6 @@ global.rooms['fly.models'] = async foundation => {
     initProps: forms.allArr('initProps', (i, arr) => ({}).gain(...arr)), //C.noFn('initProps'),
     initSyncs: forms.allArr('initSyncs', (i, arr) => [].gain(...arr)), //C.noFn('initSyncs'),
     getMaxHp: function() { return Form.maxHp; },
-    ...forms.Enemy.slice('canCollide', 'collide'),
     updateAndGetResult: function(ud) {
       
       let { aheadDist, ms, spf } = ud;

@@ -60,21 +60,18 @@ global.rooms['fly'] = async foundation => {
   let initialAheadSpd = 100;
   let testAceTerms = [ 'joust', 'gun', 'slam', 'salvo' ];
   
-  let testing = null;
-  if (foundation.getArg('flyTesting')) {
-    let [ levelName, momentName, aceTerm=null ] = foundation.getArg('flyTesting').split('.');
+  let testing = foundation.getArg('flyTesting') || null;
+  if (testing) {
+    if (U.isForm(testing, String)) {
+      let [ level, moment ] = testing.split('.');
+      testing = { level, moment };
+    }
     testing = {
-      lives: 100, levelName, momentName,
-      aceTerm: aceTerm || testAceTerms[Math.floor(Math.random() * testAceTerms.length)]
+      lives: 100,
+      aceTerm: testAceTerms[Math.floor(Math.random() * testAceTerms.length)],
+      ...testing
     };
   }
-  
-  //{
-  //  lives: 10000,
-  //  levelName: 'imposingFields',
-  //  momentName: 'wall1',
-  //  aceTerm: testAceTerms[Math.floor(Math.random() * testAceTerms.length)]
-  //};
   
   let getLevelMetadata = name => ({
     name, ...levels[name].slice('num', 'password'),
@@ -228,6 +225,7 @@ global.rooms['fly'] = async foundation => {
       'fly.level': models.Level,
       'fly.entity': val => {
         if (!U.isForm(val, Object) || !val.has('type') || !models.has(val.type)) {
+          console.log({ modelVal: val });
           throw Object.assign(Error(`No model available for modelVal`), { modelVal: val });
         }
         return models[val.type];
@@ -248,11 +246,11 @@ global.rooms['fly'] = async foundation => {
         
         if (testing) {
           
-          let levelMetadata = getLevelMetadata(testing.levelName);
-          let levelMomentsDef = levels[testing.levelName].moments;
-          if (testing.momentName) {
+          let levelMetadata = getLevelMetadata(testing.level);
+          let levelMomentsDef = levels[testing.level].moments;
+          if (testing.moment) {
             // Fast-forward to the desired moment
-            let ind = levelMomentsDef.find(moment => moment.name === testing.momentName).ind;
+            let ind = levelMomentsDef.find(moment => moment.name === testing.moment).ind;
             
             if (!levelMomentsDef[ind].has('bounds')) {
               let bounds = null

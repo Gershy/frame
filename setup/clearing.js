@@ -416,7 +416,7 @@ let U = global.U = {
       // non-collidable props
       let collisionProps = propsOfThatName.toArr(v => (v && v['~noFormCollision']) ? C.skip : v);
       if (collisionProps.length === 1) { protoDef(Form, propName, collisionProps[0]); continue; }
-      if (collisionProps.length > 1) throw Error(`Found ${propsAtName.length} props named "${propName}" for ${name} (need to define ${name}.protoype.${propName})`);
+      if (collisionProps.length > 1) throw Error(`Found ${propsOfThatName.count()} props named "${propName}" for ${name} (need to define ${name}.protoype.${propName})`);
       
       // Use the first non-collidable prop - note that all such props
       // should be interchangeable
